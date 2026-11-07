@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using MovieAG.Api;
 using MovieAG.Infrastructure;
+using MovieAG.Infrastructure.Configuration;
 using MovieAG.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,6 +19,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 
 var app = builder.Build();
+
+// Без конфига приложение бесполезно: сообщаем об этом сразу, а не при первом запросе.
+app.Services.GetRequiredService<SourcesConfigStore>();
 
 await using (var scope = app.Services.CreateAsyncScope())
 {

@@ -14,6 +14,14 @@ public sealed class SourcesConfigStore
     {
         _path = path;
         _configuration = configuration;
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException(
+                $"Не найден конфиг источников {path}. Скопируйте sources.example.yaml в sources.yaml и укажите свои источники.",
+                path);
+        }
+
         _current = SourcesConfigParser.Parse(File.ReadAllText(path), Resolve);
     }
 

@@ -488,3 +488,7 @@ client/.angular/
 
 # Локальные настройки инструментов
 .claude/
+
+# Личный список источников; в репозитории только sources.example.yaml
+sources.yaml
+sources.yaml.tmp

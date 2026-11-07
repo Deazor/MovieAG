@@ -1,0 +1,28 @@
+# Пример конфига. Скопируйте файл в sources.yaml и замените примеры своими источниками.
+# Файл sources.yaml не попадает в git.
+
+# Каталог, по которому результаты источников склеиваются в один тайтл
+catalog:
+  provider: shikimori
+  url: https://shikimori.io
+
+# Порядок сверху вниз задаёт приоритет
+sources:
+  # Источник с открытым API: токен не нужен
+  - id: my-api
+    type: api
+    url: https://api.example.com
+
+  # Балансер с токеном: значение берётся из dotnet user-secrets или переменной окружения
+  - id: my-balancer
+    type: balancer
+    url: https://balancer.example.com
+    token: ${MY_BALANCER_TOKEN}
+
+  # id можно назвать как угодно, если указать adapter: имя адаптера из SourceRegistry.
+  # enabled: false выключает источник, не удаляя его из списка
+  - id: my-second-source
+    adapter: my-adapter
+    type: site
+    url: https://site.example.com
+    enabled: false
