@@ -10,6 +10,10 @@ using Quartz;
 
 namespace MovieAG.Infrastructure;
 
+public enum DatabaseProvider { Postgres, Sqlite }
+
+public sealed record InfrastructureOptions(DatabaseProvider Database, string ConnectionString, string SourcesConfigPath);
+
 public static class DependencyInjection
 {
     private const string UserAgent = "MovieAG/0.1 (personal project)";
@@ -19,12 +23,23 @@ public static class DependencyInjection
     public static IServiceCollection AddMovieAgInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration,
-        string sourcesConfigPath)
+        InfrastructureOptions options)
     {
-        var connectionString = configuration.GetConnectionString("Default")
-            ?? throw new InvalidOperationException("Не задана строка подключения ConnectionStrings:Default");
+        var sourcesConfigPath = options.SourcesConfigPath;
 
-        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+        // Код работает с AppDbContext; для SQLite подставляется наследник со своими миграциями.
+        switch (options.Database)
+        {
+            case DatabaseProvider.Postgres:
+                services.AddDbContext<AppDbContext>(db => db.UseNpgsql(options.ConnectionString));
+                break;
+            case DatabaseProvider.Sqlite:
+                services.AddDbContext<AppDbContext, SqliteDbContext>(db => db.UseSqlite(options.ConnectionString));
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(options), options.Database, "Неизвестный провайдер базы");
+        }
+
         services.AddMemoryCache();
 
         services.AddHttpClient(SourceRegistry.HttpClientName, ConfigureClient);

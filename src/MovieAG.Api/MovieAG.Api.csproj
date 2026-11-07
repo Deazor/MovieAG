@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MovieAG.Core\MovieAG.Core.csproj" />
     <ProjectReference Include="..\MovieAG.Infrastructure\MovieAG.Infrastructure.csproj" />
+    <ProjectReference Include="..\MovieAG.Hosting\MovieAG.Hosting.csproj" />
   </ItemGroup>
 
   <ItemGroup>

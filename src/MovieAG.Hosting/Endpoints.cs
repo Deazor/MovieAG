@@ -1,10 +1,14 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MovieAG.Core;
 using MovieAG.Infrastructure.Configuration;
 using MovieAG.Infrastructure.Persistence;
 using MovieAG.Infrastructure.Sources;
 
-namespace MovieAG.Api;
+namespace MovieAG.Hosting;
 
 public sealed record SaveProgressRequest(int Episode, string DubKey, string DubName, string SourceId);
 

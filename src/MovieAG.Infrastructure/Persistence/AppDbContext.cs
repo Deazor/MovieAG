@@ -3,8 +3,19 @@ using MovieAG.Core;
 
 namespace MovieAG.Infrastructure.Persistence;
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+/// <summary>Контекст для PostgreSQL; наследники задают особенности других провайдеров.</summary>
+public class AppDbContext : DbContext
 {
+    public AppDbContext(DbContextOptions<AppDbContext> options)
+        : base(options)
+    {
+    }
+
+    protected AppDbContext(DbContextOptions options)
+        : base(options)
+    {
+    }
+
     public DbSet<CachedTitle> CachedTitles => Set<CachedTitle>();
     public DbSet<WatchProgress> WatchProgress => Set<WatchProgress>();
 

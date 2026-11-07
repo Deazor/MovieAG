@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/MovieAG.Api/MovieAG.Api.csproj" />
     <Project Path="src/MovieAG.Core/MovieAG.Core.csproj" />
+    <Project Path="src/MovieAG.Desktop/MovieAG.Desktop.csproj" />
+    <Project Path="src/MovieAG.Hosting/MovieAG.Hosting.csproj" />
     <Project Path="src/MovieAG.Infrastructure/MovieAG.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -2,11 +2,36 @@
 
 Локальный агрегатор аниме: ищет тайтл сразу во всех источниках из `sources.yaml`, склеивает результаты по ID Shikimori и показывает все озвучки в одном плеере.
 
-Стек: .NET 10, ASP.NET Core, EF Core, PostgreSQL, Quartz.NET, Angular, hls.js, xUnit.
+Стек: .NET 10, ASP.NET Core, EF Core (PostgreSQL и SQLite), Quartz.NET, Angular, hls.js, WinForms + WebView2, xUnit.
+
+Есть две версии на одном коде:
+
+| | Desktop | Веб |
+|---|---|---|
+| Запуск | Один `MovieAG.exe`, ничего ставить не нужно | Docker, .NET SDK и Node |
+| База | SQLite в `%LOCALAPPDATA%\MovieAG` | PostgreSQL в контейнере |
+| Конфиг | `%APPDATA%\MovieAG\sources.yaml` | `sources.yaml` в корне репозитория |
+| Платформа | Windows 10/11 x64 | Любая с браузером |
 
 > **Предупреждение.** Проект создан для личного использования и обучения. Приложение не хранит и не распространяет видео: контент и рекламу предоставляют сторонние сервисы, которые вы сами указываете в конфиге. За соблюдение авторских прав и условий этих сервисов отвечает пользователь.
 
-## Запуск
+## Desktop-версия
+
+Сборка одного exe (нужны .NET SDK 10 и Node 24, результат появится в `artifacts\desktop\MovieAG.exe`):
+
+```powershell
+.\scripts\publish-desktop.ps1
+```
+
+Для запуска на другом ПК достаточно скопировать `MovieAG.exe`.
+
+- **Первый запуск:** приложение создаёт `sources.yaml` из примера и открывает экран «Источники», где конфиг можно сразу отредактировать.
+- **Данные:** база и профиль встроенного браузера лежат в `%LOCALAPPDATA%\MovieAG`, конфиг в `%APPDATA%\MovieAG`. Переменная окружения `MOVIEAG_HOME` переносит всё в одну указанную папку.
+- **WebView2:** окно использует Microsoft Edge WebView2, который уже есть в Windows 10/11. Если его нет, приложение подскажет, где скачать.
+- **Предупреждение Windows:** exe не подписан, поэтому при первом запуске SmartScreen может показать «Неизвестный издатель»: «Подробнее» → «Выполнить в любом случае».
+- **Токены:** `dotnet user-secrets` в exe не работают, токен источника задаётся переменной окружения или прямо в `sources.yaml`.
+
+## Веб-версия
 
 Нужны .NET SDK 10, Node 24 и Docker.
 
@@ -74,6 +99,18 @@ dotnet user-secrets set KODIK_TOKEN "ваш-токен" --project src/MovieAG.Ap
 1. Реализуйте `IAnimeSource` в `src/MovieAG.Infrastructure/Sources`.
 2. Зарегистрируйте адаптер в словаре `Adapters` в `SourceRegistry`.
 3. Добавьте запись в свой `sources.yaml`.
+
+## Изменение модели данных
+
+У каждой базы свой набор миграций, поэтому после изменения сущностей нужны две команды (`Имя` замените своим):
+
+```bash
+dotnet ef migrations add Имя -p src/MovieAG.Infrastructure -s src/MovieAG.Api -o Persistence/Migrations --context AppDbContext
+```
+
+```bash
+dotnet ef migrations add Имя -p src/MovieAG.Infrastructure -s src/MovieAG.Api -o Persistence/SqliteMigrations --context SqliteDbContext
+```
 
 В выдачу попадают только тайтлы с ID Shikimori: по нему работает склейка.
 

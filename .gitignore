@@ -492,3 +492,6 @@ client/.angular/
 # Личный список источников; в репозитории только sources.example.yaml
 sources.yaml
 sources.yaml.tmp
+
+# Сборки desktop-версии
+artifacts/
