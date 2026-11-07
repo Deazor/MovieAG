@@ -1,0 +1,58 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using MovieAG.Core;
+using MovieAG.Infrastructure.Catalog;
+using MovieAG.Infrastructure.Configuration;
+using MovieAG.Infrastructure.Persistence;
+using MovieAG.Infrastructure.Sources;
+using Quartz;
+
+namespace MovieAG.Infrastructure;
+
+public static class DependencyInjection
+{
+    private const string UserAgent = "MovieAG/0.1 (personal project)";
+    private static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromMinutes(1);
+
+    public static IServiceCollection AddMovieAgInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        string sourcesConfigPath)
+    {
+        var connectionString = configuration.GetConnectionString("Default")
+            ?? throw new InvalidOperationException("Не задана строка подключения ConnectionStrings:Default");
+
+        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddMemoryCache();
+
+        services.AddHttpClient(SourceRegistry.HttpClientName, ConfigureClient);
+        services.AddHttpClient<ShikimoriCatalog>(ConfigureClient);
+
+        services.AddSingleton(_ => new SourcesConfigStore(sourcesConfigPath, configuration));
+        services.AddSingleton<ISourceProvider, SourceRegistry>();
+        services.AddSingleton<SourceHealthService>();
+        services.AddScoped<ICatalog, CachedCatalog>();
+        services.AddScoped<AggregationService>();
+
+        services.AddQuartz(quartz =>
+        {
+            var jobKey = new JobKey(nameof(SourceHealthJob));
+            quartz.AddJob<SourceHealthJob>(job => job.WithIdentity(jobKey));
+            quartz.AddTrigger(trigger => trigger
+                .ForJob(jobKey)
+                .StartNow()
+                .WithSimpleSchedule(schedule => schedule.WithInterval(HealthCheckInterval).RepeatForever()));
+        });
+        services.AddQuartzHostedService(options => options.WaitForJobsToComplete = false);
+
+        return services;
+    }
+
+    private static void ConfigureClient(HttpClient client)
+    {
+        client.Timeout = HttpTimeout;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+    }
+}

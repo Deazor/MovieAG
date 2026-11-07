@@ -1,0 +1,74 @@
+<main class="page title-page">
+  @let current = state();
+  @switch (current.status) {
+    @case ('loading') {
+      <p class="state-message">Собираем озвучки со всех источников…</p>
+    }
+    @case ('error') {
+      <p class="state-message">
+        @if (current.httpStatus === 404) {
+          Такого тайтла нет в каталоге.
+        } @else {
+          Не удалось загрузить тайтл. Повторите попытку позже.
+        }
+      </p>
+    }
+    @case ('ready') {
+      @let title = current.data.title;
+      <section class="hero">
+        <app-poster class="poster" [url]="title.posterUrl" [text]="title.japaneseName ?? title.name" [seed]="title.id" [fontSize]="50" />
+        <div class="hero-body">
+          <div class="hero-head">
+            <h1>{{ title.name }}</h1>
+            <div class="muted">{{ meta() }}</div>
+          </div>
+          @if (title.description) {
+            <p class="description">{{ title.description }}</p>
+          }
+          @if (primaryAction(); as action) {
+            <div class="actions">
+              <a class="btn btn-primary play" [routerLink]="['/watch', title.id]" [queryParams]="action.query">{{ action.label }}</a>
+              <div class="small muted">{{ action.hint }}</div>
+            </div>
+          }
+        </div>
+      </section>
+
+      <section class="dubs" aria-labelledby="dubs-h">
+        <h2 id="dubs-h" class="section-title">Озвучки и источники</h2>
+        @if (current.data.failedSources.length > 0) {
+          <p class="notice">Не ответили: {{ current.data.failedSources.join(', ') }}. Озвучек может быть больше.</p>
+        }
+        @if (current.data.dubs.length === 0) {
+          <p class="state-message">Этого тайтла нет ни в одном подключённом источнике. Проверьте <a routerLink="/sources">источники</a>.</p>
+        } @else {
+          <div class="table-box">
+            <div class="table">
+              <div class="row head">
+                <div>Озвучка</div>
+                <div>Тип</div>
+                <div>Серий</div>
+                <div>Где есть</div>
+                <div></div>
+              </div>
+              @for (dub of current.data.dubs; track dub.key) {
+                <div class="row">
+                  <div class="dub-name">{{ dub.name }}</div>
+                  <div class="muted">{{ kindName(dub.kind) }}</div>
+                  <div>{{ episodesLabel(dub) }}</div>
+                  <div class="mono muted small">{{ sourceNames(dub) }}</div>
+                  <a
+                    class="btn"
+                    [routerLink]="['/watch', title.id]"
+                    [queryParams]="{ dub: dub.key, episode: dub.episodes[0] }"
+                    [attr.aria-label]="'Смотреть с озвучкой ' + dub.name"
+                  >Смотреть</a>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </section>
+    }
+  }
+</main>

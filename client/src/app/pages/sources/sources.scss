@@ -1,0 +1,149 @@
+.sources-page { gap: 32px; }
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+}
+
+.head-text {
+  flex: 1 1 480px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  p {
+    max-width: 64ch;
+    text-wrap: pretty;
+  }
+}
+
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  align-items: stretch;
+}
+
+.list {
+  flex: 1 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.source {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.source-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.source-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.source-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.source-type {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: var(--raised);
+  font-size: 13px;
+}
+
+.source-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.toggle {
+  flex: none;
+  justify-content: center;
+  min-width: 76px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.small {
+  font-size: 14px;
+  text-wrap: pretty;
+}
+
+.editor {
+  flex: 999 1 560px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+textarea {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 520px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0c0b0a;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  overflow: auto;
+}
+
+.errors {
+  margin: 0;
+  padding: 12px 16px 12px 32px;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--link-hover);
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hint { flex: 1 1 280px; }
+
+.apply {
+  min-height: 48px;
+  padding: 0 24px;
+}

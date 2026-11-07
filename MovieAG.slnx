@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MovieAG.Api/MovieAG.Api.csproj" />
+    <Project Path="src/MovieAG.Core/MovieAG.Core.csproj" />
+    <Project Path="src/MovieAG.Infrastructure/MovieAG.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MovieAG.Tests/MovieAG.Tests.csproj" />
+  </Folder>
+</Solution>

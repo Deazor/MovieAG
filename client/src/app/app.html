@@ -1,0 +1,27 @@
+<header class="bar">
+  <a routerLink="/" class="brand" aria-label="MovieAG, на главную">
+    <span class="hanko" aria-hidden="true">映</span>
+    <span>MovieAG</span>
+  </a>
+
+  <nav class="nav" aria-label="Основная навигация">
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">Главная</a>
+    <a routerLink="/sources" routerLinkActive="active" ariaCurrentWhenActive="page">Источники</a>
+  </nav>
+
+  @if (showSearch()) {
+    <form class="search" role="search" (submit)="submitSearch($event, q.value)">
+      <label for="global-search" class="visually-hidden">Поиск по всем источникам</label>
+      <input #q id="global-search" type="search" placeholder="Найти аниме" [value]="currentQuery()" />
+    </form>
+  } @else {
+    <div class="spacer"></div>
+  }
+
+  <a routerLink="/sources" class="status">
+    <span class="dot" [class]="summary().tone" aria-hidden="true"></span>
+    <span>{{ summary().label }}</span>
+  </a>
+</header>
+
+<router-outlet />

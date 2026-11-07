@@ -1,0 +1,69 @@
+<main class="page sources-page">
+  <div class="head">
+    <div class="head-text">
+      <h1 class="page-title">Источники</h1>
+      <p class="muted">{{ summary().label }}. Порядок в файле задаёт приоритет: при одинаковой озвучке первым откроется верхний источник.</p>
+    </div>
+    <button type="button" class="btn" [disabled]="checking()" (click)="check()">{{ checking() ? 'Проверяем…' : 'Проверить все' }}</button>
+  </div>
+
+  <div class="columns">
+    <section class="list" aria-labelledby="list-h">
+      <h2 id="list-h" class="label">Подключено</h2>
+      @for (source of statuses(); track source.id) {
+        <div class="source">
+          <div class="source-body">
+            <div class="source-head">
+              <span class="source-name">{{ source.id }}</span>
+              <span class="source-type mono">{{ source.type }}</span>
+            </div>
+            <div class="source-state muted">
+              <span class="dot" [class]="stateTone(source)" aria-hidden="true"></span>
+              <span>{{ stateLabel(source) }}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="chip toggle"
+            [attr.aria-pressed]="source.enabled"
+            [attr.aria-label]="source.id + ': ' + (source.enabled ? 'выключить' : 'включить')"
+            (click)="toggle(source)"
+          >{{ source.enabled ? 'Вкл' : 'Выкл' }}</button>
+        </div>
+      } @empty {
+        <p class="muted">В конфиге нет источников, либо сервер недоступен.</p>
+      }
+      <div class="catalog">
+        <div class="source-name">Shikimori</div>
+        <div class="small muted">Каталог названий и обложек. По нему результаты из разных источников склеиваются в один тайтл.</div>
+      </div>
+    </section>
+
+    <section class="editor" aria-labelledby="cfg-h">
+      <h2 id="cfg-h" class="label">
+        <label for="cfg">Конфиг: <span class="mono">sources.yaml</span></label>
+      </h2>
+      <textarea
+        id="cfg"
+        spellcheck="false"
+        wrap="off"
+        [value]="yaml()"
+        [disabled]="!configLoaded()"
+        (input)="edit($any($event.target).value)"
+      ></textarea>
+
+      @if (errors().length > 0) {
+        <ul class="errors" role="alert">
+          @for (error of errors(); track error) {
+            <li>{{ error }}</li>
+          }
+        </ul>
+      }
+
+      <div class="editor-actions">
+        <div class="small muted hint">Токены не храним в файле: они подставляются из настроек или переменных окружения.</div>
+        <button type="button" class="btn btn-primary apply" [disabled]="saveState() === 'saving' || !configLoaded()" (click)="save()">{{ saveLabel() }}</button>
+      </div>
+    </section>
+  </div>
+</main>

@@ -1,0 +1,164 @@
+@let state = page();
+@switch (state.status) {
+  @case ('loading') {
+    <main class="page"><p class="state-message">Собираем озвучки со всех источников…</p></main>
+  }
+  @case ('error') {
+    <main class="page">
+      <p class="state-message">
+        @if (state.httpStatus === 404) {
+          Такого тайтла нет в каталоге.
+        } @else {
+          Не удалось загрузить тайтл. Повторите попытку позже.
+        }
+      </p>
+    </main>
+  }
+  @case ('ready') {
+    @let title = state.data.details.title;
+    <div class="back-row">
+      <a class="back" [routerLink]="['/title', title.id]">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        <span>{{ title.name }}</span>
+      </a>
+    </div>
+
+    @if (selection(); as selected) {
+      <main class="layout">
+        <section class="stage" aria-label="Видео">
+          <div class="frame">
+            @if (playbackFailed()) {
+              <div class="frame-message">
+                <div class="frame-title">{{ failureTitle() }}</div>
+                @if (fallback(); as other) {
+                  <div class="muted">Эта серия с той же озвучкой есть в {{ other.sourceId }}.</div>
+                  <button type="button" class="btn btn-primary" (click)="pickSource(other)">Переключить на {{ other.sourceId }}</button>
+                } @else {
+                  <div class="muted">Других источников с этой серией нет. Попробуйте другую озвучку.</div>
+                }
+              </div>
+            } @else if (playbackData(); as data) {
+              @if (data.kind === 'hls') {
+                <video #video controls autoplay playsinline (error)="onStreamError()"></video>
+              } @else if (iframeUrl(); as url) {
+                <iframe
+                  [src]="url"
+                  title="Плеер источника"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowfullscreen
+                  referrerpolicy="no-referrer"
+                  sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+                ></iframe>
+              } @else {
+                <div class="frame-message">
+                  <div class="frame-title">Источник вернул небезопасную ссылку</div>
+                  <div class="muted">Разрешены только адреса https.</div>
+                </div>
+              }
+            } @else if (playback()?.status === 'ready') {
+              <div class="frame-message"><div class="frame-title">Серия не найдена</div></div>
+            } @else {
+              <div class="frame-message"><div class="muted">Загружаем серию…</div></div>
+            }
+          </div>
+
+          <div class="stage-info">
+            <div class="stage-title">
+              <h1>Серия {{ selected.episode }}</h1>
+              <div class="small muted">{{ currentDub()?.name }} · {{ selected.sourceId }}</div>
+            </div>
+            <div class="stage-actions">
+              <button type="button" class="btn" [disabled]="!canGoPrev()" (click)="go(-1)">Предыдущая</button>
+              <button type="button" class="btn btn-light" [disabled]="!canGoNext()" (click)="go(1)">Следующая</button>
+            </div>
+          </div>
+
+          @if (notice()) {
+            <p class="notice" role="status">{{ notice() }}</p>
+          }
+        </section>
+
+        <aside class="rail" aria-label="Выбор озвучки, источника и серии">
+          <div class="group" role="group" aria-labelledby="dub-h">
+            <h2 id="dub-h" class="label">Озвучка</h2>
+            <div class="dub-list">
+              @for (dubItem of state.data.details.dubs; track dubItem.key) {
+                <button
+                  type="button"
+                  class="dub"
+                  [attr.aria-pressed]="dubItem.key === selected.dubKey"
+                  (click)="pickDub(dubItem)"
+                >
+                  <span class="dub-text">
+                    <span class="dub-name">{{ dubItem.name }}</span>
+                    <span class="dub-sub">{{ dubItem.kind === 'subtitles' ? 'Субтитры' : 'Озвучка' }}</span>
+                  </span>
+                  <span class="dub-sub">{{ dubEpisodesLabel(dubItem) }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="group" role="group" aria-labelledby="src-h">
+            <h2 id="src-h" class="label">Источник для этой озвучки</h2>
+            <div class="chips">
+              @for (source of currentDub()?.sources; track source.sourceId) {
+                <button
+                  type="button"
+                  class="chip"
+                  [attr.aria-pressed]="source.sourceId === selected.sourceId"
+                  (click)="pickSource(source)"
+                >
+                  <span class="dot" [class]="sourceDot(source.sourceId)" aria-hidden="true"></span>
+                  <span>{{ source.sourceId }}</span>
+                  <span class="chip-sub">{{ sourceLabel(source.sourceId) }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          @if (playbackData()?.qualities?.length) {
+            <div class="group" role="group" aria-labelledby="quality-h">
+              <h2 id="quality-h" class="label">Качество</h2>
+              <div class="chips">
+                @for (item of playbackData()?.qualities; track item.label) {
+                  <button
+                    type="button"
+                    class="chip"
+                    [attr.aria-pressed]="item.label === activeQuality()"
+                    (click)="quality.set(item.label)"
+                  >{{ item.label }}</button>
+                }
+              </div>
+            </div>
+          }
+
+          <div class="group" role="group" aria-labelledby="eps-h">
+            <h2 id="eps-h" class="label">Серии</h2>
+            <div class="episodes">
+              @for (cell of cells(); track cell.n) {
+                <button
+                  type="button"
+                  class="episode"
+                  [class.current]="cell.isCurrent"
+                  [class.watched]="cell.isWatched && !cell.isCurrent"
+                  [disabled]="!cell.isAvailable"
+                  [attr.aria-label]="cell.label"
+                  [attr.aria-current]="cell.isCurrent ? 'true' : null"
+                  (click)="pickEpisode(cell.n)"
+                >{{ cell.n }}</button>
+              }
+            </div>
+          </div>
+        </aside>
+      </main>
+    } @else {
+      <main class="page">
+        <p class="state-message">
+          Этого тайтла нет ни в одном подключённом источнике.
+          <a routerLink="/sources">Проверьте источники</a>.
+        </p>
+      </main>
+    }
+  }
+}

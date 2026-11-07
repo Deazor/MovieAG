@@ -1,0 +1,72 @@
+<main class="home">
+  <section class="hero">
+    <div class="hero-text">
+      <h1>Любое аниме. Любая озвучка.</h1>
+      <form class="hero-search" role="search" (submit)="submit($event, q.value)">
+        <label for="home-search" class="muted">Поиск сразу по всем источникам из конфига</label>
+        <div class="hero-row">
+          <input #q id="home-search" type="search" placeholder="Название на русском, английском или японском" />
+          <button type="submit" class="btn btn-primary">Найти</button>
+        </div>
+      </form>
+    </div>
+    <div class="sun" aria-hidden="true">映</div>
+  </section>
+
+  @let historyState = history();
+  @if (historyState.status === 'ready' && historyState.data.length > 0) {
+    <section class="block" aria-labelledby="continue-h">
+      <h2 id="continue-h" class="section-title">Продолжить просмотр</h2>
+      <div class="continue-grid">
+        @for (item of historyState.data; track item.titleId) {
+          <a
+            class="continue-card"
+            [routerLink]="['/watch', item.titleId]"
+            [queryParams]="{ dub: item.dubKey, episode: item.lastEpisode }"
+          >
+            <app-poster class="thumb" [url]="item.posterUrl" [text]="item.name" [seed]="item.titleId" [fontSize]="13" [sun]="false" />
+            <div class="continue-body">
+              <div class="continue-name">{{ item.name }}</div>
+              <div class="muted small">
+                Серия {{ item.lastEpisode }}@if (item.episodesTotal) { из {{ item.episodesTotal }} } · {{ item.dubName }}
+              </div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress-fill" [style.width.%]="progressPercent(item)"></div>
+              </div>
+            </div>
+          </a>
+        }
+      </div>
+    </section>
+  }
+
+  <section class="block" aria-labelledby="fresh-h">
+    <h2 id="fresh-h" class="section-title">Свежее в источниках</h2>
+    @let freshState = fresh();
+    @switch (freshState.status) {
+      @case ('loading') {
+        <p class="state-message">Загружаем обновления…</p>
+      }
+      @case ('error') {
+        <p class="state-message">Не удалось получить обновления. Проверьте <a routerLink="/sources">источники</a>.</p>
+      }
+      @case ('ready') {
+        @if (freshState.data.length === 0) {
+          <p class="state-message">Пока пусто. Включите хотя бы один источник на странице <a routerLink="/sources">Источники</a>.</p>
+        } @else {
+          <div class="fresh-grid">
+            @for (item of freshState.data; track item.id) {
+              <a class="fresh-card" [routerLink]="['/title', item.id]">
+                <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="item.id" />
+                <div class="fresh-name">{{ item.name }}</div>
+                <div class="muted small">
+                  @if (item.latestEpisode) { Серия {{ item.latestEpisode }} · }{{ item.dubs[0] }}
+                </div>
+              </a>
+            }
+          </div>
+        }
+      }
+    }
+  </section>
+</main>
