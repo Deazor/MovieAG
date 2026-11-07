@@ -67,6 +67,18 @@
   text-align: center;
 }
 
+.frame-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.frame-detail {
+  font-size: 12px;
+  color: var(--faint);
+}
+
 .frame-title {
   font-size: 24px;
   font-weight: 700;

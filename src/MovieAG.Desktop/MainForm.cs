@@ -68,6 +68,12 @@ internal sealed class MainForm : Form
         }
 
         var core = _webView.CoreWebView2;
+
+        // Сервер стартует на случайном порту, поэтому адрес приложения меняется от запуска к запуску.
+        // Видеосерверы кэшируют ответы на неделю с CORS-разрешением для прошлого адреса и без Vary: Origin,
+        // и после перезапуска уже просмотренная серия не загружалась. Кэш живёт только в пределах одного запуска.
+        await core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
+
         core.Settings.IsStatusBarEnabled = false;
 #if !DEBUG
         core.Settings.AreDevToolsEnabled = false;

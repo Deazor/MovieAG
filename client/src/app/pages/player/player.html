@@ -32,9 +32,17 @@
                 <div class="frame-title">{{ failureTitle() }}</div>
                 @if (fallback(); as other) {
                   <div class="muted">Эта серия с той же озвучкой есть в {{ other.label }}.</div>
-                  <button type="button" class="btn btn-primary" (click)="pickSource(other)">Переключить на {{ other.label }}</button>
                 } @else {
-                  <div class="muted">Других источников с этой серией нет. Попробуйте другую озвучку.</div>
+                  <div class="muted">Других источников с этой серией нет. Попробуйте повторить или выбрать другую озвучку.</div>
+                }
+                <div class="frame-actions">
+                  <button type="button" class="btn" (click)="retryPlayback()">Повторить</button>
+                  @if (fallback(); as other) {
+                    <button type="button" class="btn btn-primary" (click)="pickSource(other)">Переключить на {{ other.label }}</button>
+                  }
+                </div>
+                @if (streamError(); as detail) {
+                  <div class="frame-detail mono">{{ detail }}</div>
                 }
               </div>
             } @else if (playbackData(); as data) {
@@ -44,7 +52,7 @@
                   controls
                   autoplay
                   playsinline
-                  (error)="onStreamError()"
+                  (error)="onVideoError(video)"
                   (loadedmetadata)="onVideoLoaded(video)"
                   (timeupdate)="onVideoTime(video)"
                   (pause)="onVideoPause()"

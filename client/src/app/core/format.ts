@@ -54,6 +54,7 @@ export function titleMeta(item: { kind: string | null; year: number | null; epis
 export function sourcesSummary(statuses: SourceStatus[]): { label: string; tone: 'ok' | 'warn' | 'bad' | '' } {
   const enabled = statuses.filter((s) => s.enabled);
   if (enabled.length === 0) return { label: 'Нет включённых источников', tone: 'bad' };
+  if (enabled.some((s) => s.state === 'unknown')) return { label: 'Проверяем источники…', tone: '' };
 
   const online = enabled.filter((s) => s.state === 'online').length;
   const noun = plural(enabled.length, 'источника', 'источников', 'источников');

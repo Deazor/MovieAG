@@ -15,7 +15,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import type Hls from 'hls.js';
-import { catchError, combineLatest, distinctUntilChanged, forkJoin, map, of, switchMap } from 'rxjs';
+import { catchError, combineLatest, distinctUntilChanged, forkJoin, map, of, retry, switchMap, throwError, timer } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Loadable, closestEpisode, loadable, plural, sourceStateLabel, sourceTone } from '../../core/format';
 import { DubGroup, DubSource, HistoryItem, Playback, TitleDetails } from '../../core/models';
@@ -24,6 +24,9 @@ import { SourcesStore } from '../../core/sources.store';
 
 const POSITION_SAVE_INTERVAL_MS = 10_000;
 const SEEK_CONFIRM_TIMEOUT_MS = 5_000;
+const PLAYBACK_RETRY_DELAY_MS = 1_500;
+const MAX_NETWORK_RETRIES = 2;
+const NETWORK_RETRY_DELAY_MS = 1_500;
 /** Насколько близко к цели должен оказаться плеер, чтобы считать перемотку состоявшейся. */
 const SEEK_TOLERANCE_SECONDS = 30;
 
@@ -67,7 +70,9 @@ export class Player implements OnDestroy {
   protected readonly selection = signal<Selection | null>(null);
   protected readonly notice = signal('');
   protected readonly quality = signal<string | null>(null);
-  protected readonly streamFailed = signal(false);
+  /** Описание сбоя потока для экрана ошибки; null, пока всё в порядке. */
+  protected readonly streamError = signal<string | null>(null);
+  private readonly retryAttempt = signal(0);
   protected readonly resume = signal<ResumeState | null>(null);
   private readonly watched = signal<ReadonlySet<number>>(new Set());
 
@@ -121,7 +126,8 @@ export class Player implements OnDestroy {
   private readonly playbackRequest = computed(() => {
     const source = this.currentSource();
     const selection = this.selection();
-    return source && selection ? `${source.sourceId}|${source.dubId}|${selection.episode}` : null;
+    const attempt = this.retryAttempt();
+    return source && selection ? `${source.sourceId}|${source.dubId}|${selection.episode}|${attempt}` : null;
   });
 
   /** Другой источник с этой же серией в той же озвучке: его предлагаем при сбое. */
@@ -141,7 +147,16 @@ export class Player implements OnDestroy {
         const source = this.currentSource();
         const selection = this.selection();
         if (!request || !source || !selection) return of<Loadable<Playback> | null>(null);
-        return loadable(this.api.playback(Number(id), source.sourceId, source.dubId, selection.episode));
+
+        // Источник мог не ответить разово, например сразу после запуска: один повтор до показа ошибки.
+        const request$ = this.api.playback(Number(id), source.sourceId, source.dubId, selection.episode).pipe(
+          retry({
+            count: 1,
+            delay: (error: { status?: number }) =>
+              (error.status ?? 0) >= 500 ? timer(PLAYBACK_RETRY_DELAY_MS) : throwError(() => error),
+          }),
+        );
+        return loadable(request$);
       }),
     ),
     { initialValue: null },
@@ -152,14 +167,16 @@ export class Player implements OnDestroy {
     return state?.status === 'ready' ? state.data : null;
   });
 
-  protected readonly playbackFailed = computed(() => this.playback()?.status === 'error' || this.streamFailed());
+  protected readonly playbackFailed = computed(() => this.playback()?.status === 'error' || this.streamError() !== null);
 
+  /** Отличаем «источник не ответил» от «ссылка получена, но поток не проигрывается». */
   protected readonly failureTitle = computed(() => {
     const state = this.playback();
     const source = this.currentSource()?.label ?? 'Источник';
-    return state?.status === 'error' && state.httpStatus === 404
-      ? `В ${source} нет этой серии`
-      : `${source} не отвечает`;
+    if (state?.status === 'error') {
+      return state.httpStatus === 404 ? `В ${source} нет этой серии` : `${source} не отвечает`;
+    }
+    return 'Видео не загрузилось';
   });
 
   protected readonly iframeUrl = computed<SafeResourceUrl | null>(() => {
@@ -341,8 +358,17 @@ export class Player implements OnDestroy {
     if (episode !== null) this.pickEpisode(episode);
   }
 
-  protected onStreamError(): void {
-    this.streamFailed.set(true);
+  protected retryPlayback(): void {
+    this.carryPosition();
+    this.playerReady = false;
+    this.streamError.set(null);
+    this.retryAttempt.update((n) => n + 1);
+  }
+
+  /** При hls.js ошибки видео разбирает он сам и пытается восстановиться, поэтому здесь только встроенный HLS. */
+  protected onVideoError(element: HTMLVideoElement): void {
+    if (this.hls) return;
+    this.streamError.set(`MediaError ${element.error?.code ?? '?'}`);
   }
 
   private neighbor(direction: 1 | -1): number | null {
@@ -377,7 +403,7 @@ export class Player implements OnDestroy {
     }
 
     this.playerReady = false;
-    this.streamFailed.set(false);
+    this.streamError.set(null);
     this.selection.set(next);
   }
 
@@ -528,8 +554,30 @@ export class Player implements OnDestroy {
 
     const hls = new HlsLib();
     this.hls = hls;
+
+    // Сначала пробуем восстановиться сами: сеть перезапрашиваем, декодер пересоздаём, и только потом сдаёмся.
+    let networkRetries = 0;
+    let mediaRecovered = false;
     hls.on(HlsLib.Events.ERROR, (_event, data) => {
-      if (data.fatal) this.onStreamError();
+      if (!data.fatal) return;
+
+      if (data.type === HlsLib.ErrorTypes.NETWORK_ERROR && networkRetries < MAX_NETWORK_RETRIES) {
+        networkRetries++;
+        // startLoad не перезапрашивает упавший плейлист, поэтому загружаем поток заново с текущего места.
+        if (element.currentTime > 0) this.startResume(element.currentTime);
+        setTimeout(() => {
+          if (this.hls === hls && !isCancelled()) hls.loadSource(url);
+        }, NETWORK_RETRY_DELAY_MS * networkRetries);
+        return;
+      }
+      if (data.type === HlsLib.ErrorTypes.MEDIA_ERROR && !mediaRecovered) {
+        mediaRecovered = true;
+        hls.recoverMediaError();
+        return;
+      }
+
+      console.warn('Поток не воспроизводится', data);
+      this.streamError.set(`${data.type} · ${data.details}`);
     });
     hls.loadSource(url);
     hls.attachMedia(element);

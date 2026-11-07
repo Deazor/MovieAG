@@ -50,6 +50,12 @@ describe('sourcesSummary', () => {
     expect(summary.tone).toBe('warn');
   });
 
+  it('не показывает «0 в сети», пока первая проверка не закончилась', () => {
+    const summary = sourcesSummary([status('unknown'), status('online')]);
+    expect(summary.label).toBe('Проверяем источники…');
+    expect(summary.tone).toBe('');
+  });
+
   it('сообщает, когда включённых нет', () => {
     expect(sourcesSummary([status('disabled', false)]).tone).toBe('bad');
   });
