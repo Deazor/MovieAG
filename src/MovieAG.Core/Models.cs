@@ -48,17 +48,21 @@ public sealed record TitleCard
     public IReadOnlyList<string> Dubs { get; init; } = [];
     public IReadOnlyList<string> Sources { get; init; } = [];
     public int? LatestEpisode { get; init; }
+
+    /// <summary>Хотя бы один источник не называет озвучки в поиске: полный список есть в карточке тайтла.</summary>
+    public bool HasMoreDubs { get; init; }
 }
 
-/// <summary>Одна озвучка у одного источника.</summary>
+/// <summary>Одна озвучка у одного источника. Label отличает плееры внутри источника.</summary>
 public sealed record DubVariant(
     string SourceId,
     string DubId,
     string DubName,
     DubKind Kind,
-    IReadOnlyList<int> Episodes);
+    IReadOnlyList<int> Episodes,
+    string? Label = null);
 
-public sealed record DubSource(string SourceId, string DubId, IReadOnlyList<int> Episodes);
+public sealed record DubSource(string SourceId, string DubId, string Label, IReadOnlyList<int> Episodes);
 
 /// <summary>Озвучка, собранная со всех источников.</summary>
 public sealed record DubGroup(

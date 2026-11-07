@@ -36,7 +36,7 @@ public static class TitleMerger
                     first.DubName,
                     first.Kind,
                     g.SelectMany(v => v.Episodes).Distinct().Order().ToList(),
-                    g.Select(v => new DubSource(v.SourceId, v.DubId, v.Episodes)).ToList());
+                    g.Select(v => new DubSource(v.SourceId, v.DubId, v.Label ?? v.SourceId, v.Episodes)).ToList());
             })
             .ToList();
     }
@@ -73,7 +73,8 @@ public static class TitleMerger
                 .DistinctBy(NormalizeDubName)
                 .ToList(),
             Sources = hits.Select(h => h.SourceId).Distinct().ToList(),
-            LatestEpisode = hits.Max(h => h.LatestEpisode)
+            LatestEpisode = hits.Max(h => h.LatestEpisode),
+            HasMoreDubs = hits.Any(h => h.DubNames.Count == 0)
         };
     }
 }

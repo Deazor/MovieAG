@@ -76,6 +76,6 @@ export class TitlePage {
   }
 
   protected sourceNames(dub: DubGroup): string {
-    return dub.sources.map((s) => s.sourceId).join(', ');
+    return [...new Set(dub.sources.map((s) => s.label))].join(', ');
   }
 }

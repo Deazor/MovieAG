@@ -13,7 +13,8 @@ public sealed class SourceRegistry : ISourceProvider
     private static readonly Dictionary<string, (Func<HttpClient, SourceDefinition, IAnimeSource> Create, bool NeedsToken)> Adapters = new()
     {
         [AniLibriaSource.AdapterName] = ((http, def) => new AniLibriaSource(http, def), false),
-        [KodikSource.AdapterName] = ((http, def) => new KodikSource(http, def), true)
+        [KodikSource.AdapterName] = ((http, def) => new KodikSource(http, def), true),
+        [YummySource.AdapterName] = ((http, def) => new YummySource(http, def), false)
     };
 
     private readonly SourcesConfigStore _store;

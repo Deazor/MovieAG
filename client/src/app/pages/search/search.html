@@ -64,6 +64,9 @@
                     @for (dub of item.dubs; track dub) {
                       <span class="tag">{{ dub }}</span>
                     }
+                    @if (item.hasMoreDubs) {
+                      <span class="tag tag-more">{{ item.dubs.length > 0 ? 'ещё в карточке' : 'озвучки в карточке' }}</span>
+                    }
                   </div>
                   <div class="card-sources mono muted">{{ item.sources.join(', ') }}</div>
                 </div>

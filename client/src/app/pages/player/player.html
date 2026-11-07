@@ -31,8 +31,8 @@
               <div class="frame-message">
                 <div class="frame-title">{{ failureTitle() }}</div>
                 @if (fallback(); as other) {
-                  <div class="muted">Эта серия с той же озвучкой есть в {{ other.sourceId }}.</div>
-                  <button type="button" class="btn btn-primary" (click)="pickSource(other)">Переключить на {{ other.sourceId }}</button>
+                  <div class="muted">Эта серия с той же озвучкой есть в {{ other.label }}.</div>
+                  <button type="button" class="btn btn-primary" (click)="pickSource(other)">Переключить на {{ other.label }}</button>
                 } @else {
                   <div class="muted">Других источников с этой серией нет. Попробуйте другую озвучку.</div>
                 }
@@ -46,7 +46,7 @@
                   title="Плеер источника"
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowfullscreen
-                  referrerpolicy="no-referrer"
+                  referrerpolicy="strict-origin-when-cross-origin"
                   sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
                 ></iframe>
               } @else {
@@ -65,7 +65,7 @@
           <div class="stage-info">
             <div class="stage-title">
               <h1>Серия {{ selected.episode }}</h1>
-              <div class="small muted">{{ currentDub()?.name }} · {{ selected.sourceId }}</div>
+              <div class="small muted">{{ currentDub()?.name }} · {{ currentSource()?.label }}</div>
             </div>
             <div class="stage-actions">
               <button type="button" class="btn" [disabled]="!canGoPrev()" (click)="go(-1)">Предыдущая</button>
@@ -102,16 +102,18 @@
           <div class="group" role="group" aria-labelledby="src-h">
             <h2 id="src-h" class="label">Источник для этой озвучки</h2>
             <div class="chips">
-              @for (source of currentDub()?.sources; track source.sourceId) {
+              @for (source of currentDub()?.sources; track source.sourceId + source.dubId) {
                 <button
                   type="button"
                   class="chip"
-                  [attr.aria-pressed]="source.sourceId === selected.sourceId"
+                  [attr.aria-pressed]="source === currentSource()"
                   (click)="pickSource(source)"
                 >
                   <span class="dot" [class]="sourceDot(source.sourceId)" aria-hidden="true"></span>
-                  <span>{{ source.sourceId }}</span>
-                  <span class="chip-sub">{{ sourceLabel(source.sourceId) }}</span>
+                  <span>{{ source.label }}</span>
+                  @if (sourceLabel(source.sourceId); as status) {
+                    <span class="chip-sub">{{ status }}</span>
+                  }
                 </button>
               }
             </div>

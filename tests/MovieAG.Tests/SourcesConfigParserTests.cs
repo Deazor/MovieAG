@@ -89,6 +89,7 @@ public class SourcesConfigParserTests
 
     [Theory]
     [InlineData("anilibria", null, true, SourceReadiness.Ready)]
+    [InlineData("yummy", null, true, SourceReadiness.Ready)]
     [InlineData("kodik", null, true, SourceReadiness.NeedsToken)]
     [InlineData("kodik", "secret", true, SourceReadiness.Ready)]
     [InlineData("kodik", "secret", false, SourceReadiness.Disabled)]

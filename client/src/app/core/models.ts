@@ -13,6 +13,7 @@ export interface TitleCard {
   dubs: string[];
   sources: string[];
   latestEpisode: number | null;
+  hasMoreDubs: boolean;
 }
 
 export interface SearchResult {
@@ -39,6 +40,7 @@ export interface CatalogTitle {
 export interface DubSource {
   sourceId: string;
   dubId: string;
+  label: string;
   episodes: number[];
 }
 

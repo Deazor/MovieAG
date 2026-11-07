@@ -23,6 +23,8 @@ import { SourcesStore } from '../../core/sources.store';
 interface Selection {
   dubKey: string;
   sourceId: string;
+  /** У одного источника может быть несколько плееров одной озвучки: их различает dubId. */
+  dubId: string;
   episode: number;
 }
 
@@ -88,7 +90,9 @@ export class Player implements OnDestroy {
 
   protected readonly currentSource = computed<DubSource | null>(() => {
     const selection = this.selection();
-    return this.currentDub()?.sources.find((s) => s.sourceId === selection?.sourceId) ?? null;
+    return (
+      this.currentDub()?.sources.find((s) => s.sourceId === selection?.sourceId && s.dubId === selection?.dubId) ?? null
+    );
   });
 
   private readonly playbackRequest = computed(() => {
@@ -100,8 +104,9 @@ export class Player implements OnDestroy {
   /** Другой источник с этой же серией в той же озвучке: его предлагаем при сбое. */
   protected readonly fallback = computed<DubSource | null>(() => {
     const selection = this.selection();
+    const current = this.currentSource();
     const alternatives = this.currentDub()?.sources.filter(
-      (s) => s.sourceId !== selection?.sourceId && selection !== null && s.episodes.includes(selection.episode),
+      (s) => s !== current && selection !== null && s.episodes.includes(selection.episode),
     );
     return alternatives?.find((s) => this.sources.state(s.sourceId)?.state !== 'offline') ?? null;
   });
@@ -128,7 +133,7 @@ export class Player implements OnDestroy {
 
   protected readonly failureTitle = computed(() => {
     const state = this.playback();
-    const source = this.selection()?.sourceId ?? 'Источник';
+    const source = this.currentSource()?.label ?? 'Источник';
     return state?.status === 'error' && state.httpStatus === 404
       ? `В ${source} нет этой серии`
       : `${source} не отвечает`;
@@ -203,9 +208,10 @@ export class Player implements OnDestroy {
     return total ? `${dub.episodes.length} из ${total}` : `${dub.episodes.length} ${plural(dub.episodes.length, 'серия', 'серии', 'серий')}`;
   }
 
+  /** Живые плееры подписывать незачем: подпись нужна, только когда с источником что-то не так. */
   protected sourceLabel(sourceId: string): string {
     const status = this.sources.state(sourceId);
-    return status ? sourceStateLabel(status) : '';
+    return status && status.state !== 'online' ? sourceStateLabel(status) : '';
   }
 
   protected sourceDot(sourceId: string): string {
@@ -233,7 +239,7 @@ export class Player implements OnDestroy {
     const episode = closestEpisode(source.episodes, selection.episode) ?? selection.episode;
     this.notice.set('');
     this.streamFailed.set(false);
-    this.selection.set({ ...selection, sourceId: source.sourceId, episode });
+    this.selection.set({ ...selection, sourceId: source.sourceId, dubId: source.dubId, episode });
   }
 
   protected pickEpisode(episode: number): void {
@@ -262,18 +268,19 @@ export class Player implements OnDestroy {
 
   private select(dub: DubGroup, episode: number): void {
     const selection = this.selection();
-    const source = this.chooseSource(dub, episode, selection?.dubKey === dub.key ? selection.sourceId : undefined);
+    const current = selection?.dubKey === dub.key ? selection : null;
+    const source = this.chooseSource(dub, episode, (s) => s.sourceId === current?.sourceId && s.dubId === current?.dubId);
     if (!source) return;
 
     this.streamFailed.set(false);
-    this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, episode });
+    this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, dubId: source.dubId, episode });
   }
 
   /** Сохраняет текущий источник, если серия там есть; иначе берёт первый живой по приоритету. */
-  private chooseSource(dub: DubGroup, episode: number, preferred?: string): DubSource | undefined {
+  private chooseSource(dub: DubGroup, episode: number, isPreferred: (source: DubSource) => boolean): DubSource | undefined {
     const withEpisode = dub.sources.filter((s) => s.episodes.includes(episode));
     return (
-      withEpisode.find((s) => s.sourceId === preferred) ??
+      withEpisode.find(isPreferred) ??
       withEpisode.find((s) => this.sources.state(s.sourceId)?.state !== 'offline') ??
       withEpisode[0]
     );
@@ -295,8 +302,8 @@ export class Player implements OnDestroy {
     if (episode === null) return;
 
     const preferred = progress?.dubKey === dub.key ? progress.sourceId : undefined;
-    const source = this.chooseSource(dub, episode, preferred);
-    if (source) this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, episode });
+    const source = this.chooseSource(dub, episode, (s) => s.sourceId === preferred);
+    if (source) this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, dubId: source.dubId, episode });
   }
 
   private saveProgress(): void {
@@ -304,10 +311,10 @@ export class Player implements OnDestroy {
     const dub = this.currentDub();
     if (!selection || !dub) return;
 
-    const key = `${selection.dubKey}|${selection.sourceId}|${selection.episode}`;
+    const key = `${selection.episode}|${selection.dubKey}|${selection.sourceId}|${selection.dubId}`;
     if (key === this.lastSaved) return;
 
-    const previous = this.lastSaved ? Number(this.lastSaved.split('|')[2]) : null;
+    const previous = this.lastSaved ? Number(this.lastSaved.split('|')[0]) : null;
     this.lastSaved = key;
 
     if (previous !== null && previous !== selection.episode) {

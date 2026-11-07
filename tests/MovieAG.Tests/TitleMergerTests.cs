@@ -67,6 +67,27 @@ public class TitleMergerTests
         Assert.Equal([2, 1, 3], cards.Select(c => c.Id));
     }
 
+    [Fact]
+    public void MergeCards_MarksTitlesWhereSourceDoesNotNameDubs()
+    {
+        var cards = TitleMerger.MergeCards([], [Hit(1, "anilibria", "AniLibria"), Hit(1, "yummy"), Hit(2, "anilibria", "AniLibria")]);
+
+        Assert.True(cards[0].HasMoreDubs);
+        Assert.False(cards[1].HasMoreDubs);
+    }
+
+    [Fact]
+    public void GroupDubs_UsesPlayerLabelAndFallsBackToSourceId()
+    {
+        var group = Assert.Single(TitleMerger.GroupDubs(
+        [
+            new DubVariant("anilibria", "9542", "AniLibria", DubKind.Voice, [1]),
+            new DubVariant("yummy", "1|4|d", "AniLibria", DubKind.Voice, [1], "Kodik")
+        ]));
+
+        Assert.Equal(["anilibria", "Kodik"], group.Sources.Select(s => s.Label));
+    }
+
     [Theory]
     [InlineData("AniLibria.TV", "anilibria")]
     [InlineData("AniLibria", "anilibria")]
