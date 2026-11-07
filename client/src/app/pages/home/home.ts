@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { Loadable, loadable } from '../../core/format';
 import { HistoryItem, TitleCard } from '../../core/models';
+import { formatTime, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
 
 @Component({
@@ -31,6 +32,10 @@ export class Home {
     if (q.length >= 2) {
       void this.router.navigate(['/search'], { queryParams: { q } });
     }
+  }
+
+  protected stoppedAt(item: HistoryItem): string | null {
+    return shouldResume(item.positionSeconds, item.durationSeconds) ? formatTime(item.positionSeconds) : null;
   }
 
   protected progressPercent(item: HistoryItem): number {

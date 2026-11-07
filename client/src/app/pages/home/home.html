@@ -28,7 +28,7 @@
             <div class="continue-body">
               <div class="continue-name">{{ item.name }}</div>
               <div class="muted small">
-                Серия {{ item.lastEpisode }}@if (item.episodesTotal) { из {{ item.episodesTotal }} } · {{ item.dubName }}
+                Серия {{ item.lastEpisode }}@if (item.episodesTotal) { из {{ item.episodesTotal }} }@if (stoppedAt(item); as time) { · {{ time }} } · {{ item.dubName }}
               </div>
               <div class="progress" aria-hidden="true">
                 <div class="progress-fill" [style.width.%]="progressPercent(item)"></div>

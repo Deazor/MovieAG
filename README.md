@@ -49,6 +49,18 @@ npm --prefix client start
 dotnet user-secrets set KODIK_TOKEN "ваш-токен" --project src/MovieAG.Api
 ```
 
+## История просмотра
+
+Для каждого тайтла сохраняются серия, озвучка, источник и позиция в серии. Встроенные плееры сообщают время через `postMessage`, форматы описаны в `client/src/app/core/player-bridge.ts`.
+
+| Плеер | Сохранение времени | Автоперемотка |
+|---|---|---|
+| HLS (AniLibria) | Да | Да |
+| Kodik | Да | Да |
+| CVH | Да | Да, после рекламы |
+| Aksor | Да | Нет, приложение подсказывает время для ручной перемотки |
+| Alloha | Нет | Нет |
+
 ## Новый источник
 
 1. Реализуйте `IAnimeSource` в `src/MovieAG.Infrastructure/Sources`.

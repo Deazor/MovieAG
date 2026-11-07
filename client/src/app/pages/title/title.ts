@@ -5,6 +5,7 @@ import { catchError, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Loadable, kindLabel, loadable, plural } from '../../core/format';
 import { DubGroup, DubKind, TitleDetails } from '../../core/models';
+import { formatTime, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
 
 @Component({
@@ -55,8 +56,11 @@ export class TitlePage {
 
     const progress = this.progress();
     if (progress) {
+      const time = shouldResume(progress.positionSeconds, progress.durationSeconds)
+        ? `, ${formatTime(progress.positionSeconds)}`
+        : '';
       return {
-        label: `Продолжить: серия ${progress.lastEpisode}`,
+        label: `Продолжить: серия ${progress.lastEpisode}${time}`,
         hint: `${progress.dubName}, как в прошлый раз`,
         query: { dub: progress.dubKey, episode: progress.lastEpisode },
       };

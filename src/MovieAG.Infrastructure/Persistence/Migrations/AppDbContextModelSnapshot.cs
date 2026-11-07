@@ -87,7 +87,13 @@ namespace MovieAG.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<int>("LastEpisode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PositionSeconds")
                         .HasColumnType("integer");
 
                     b.Property<string>("SourceId")

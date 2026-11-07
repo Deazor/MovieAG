@@ -80,6 +80,8 @@ export interface HistoryItem {
   dubName: string;
   sourceId: string;
   watchedEpisodes: number[];
+  positionSeconds: number;
+  durationSeconds: number | null;
 }
 
 export interface SourceStatus {

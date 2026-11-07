@@ -39,10 +39,21 @@
               </div>
             } @else if (playbackData(); as data) {
               @if (data.kind === 'hls') {
-                <video #video controls autoplay playsinline (error)="onStreamError()"></video>
+                <video
+                  #video
+                  controls
+                  autoplay
+                  playsinline
+                  (error)="onStreamError()"
+                  (loadedmetadata)="onVideoLoaded(video)"
+                  (timeupdate)="onVideoTime(video)"
+                  (pause)="onVideoPause()"
+                ></video>
               } @else if (iframeUrl(); as url) {
                 <iframe
+                  #frame
                   [src]="url"
+                  (load)="onFrameLoaded()"
                   title="Плеер источника"
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowfullscreen
@@ -72,6 +83,13 @@
               <button type="button" class="btn btn-light" [disabled]="!canGoNext()" (click)="go(1)">Следующая</button>
             </div>
           </div>
+
+          @if (resumeNotice(); as text) {
+            <div class="notice resume" role="status">
+              <span>{{ text }}</span>
+              <button type="button" class="btn" (click)="restart()">С начала</button>
+            </div>
+          }
 
           @if (notice()) {
             <p class="notice" role="status">{{ notice() }}</p>
@@ -128,7 +146,7 @@
                     type="button"
                     class="chip"
                     [attr.aria-pressed]="item.label === activeQuality()"
-                    (click)="quality.set(item.label)"
+                    (click)="pickQuality(item.label)"
                   >{{ item.label }}</button>
                 }
               </div>

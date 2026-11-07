@@ -8,6 +8,8 @@ namespace MovieAG.Api;
 
 public sealed record SaveProgressRequest(int Episode, string DubKey, string DubName, string SourceId);
 
+public sealed record SavePositionRequest(int Episode, int Seconds, int? DurationSeconds);
+
 public sealed record SetEnabledRequest(bool Enabled);
 
 public sealed record ConfigDto(string Yaml);
@@ -22,7 +24,9 @@ public sealed record HistoryItem(
     string DubKey,
     string DubName,
     string SourceId,
-    IReadOnlyList<int> WatchedEpisodes);
+    IReadOnlyList<int> WatchedEpisodes,
+    int PositionSeconds,
+    int? DurationSeconds);
 
 public static class Endpoints
 {
@@ -30,6 +34,7 @@ public static class Endpoints
     private const int MaxQueryLength = 200;
     private const int FreshLimit = 12;
     private const int HistoryLimit = 6;
+    private const int MaxPositionSeconds = 24 * 60 * 60;
 
     public static void MapMovieAgApi(this WebApplication app)
     {
@@ -43,6 +48,7 @@ public static class Endpoints
         api.MapGet("/history", GetHistory);
         api.MapGet("/history/{id:int}", GetProgress);
         api.MapPut("/history/{id:int}", SaveProgress);
+        api.MapPut("/history/{id:int}/position", SavePosition);
 
         api.MapGet("/sources", (SourceHealthService health) => health.GetStatuses());
         api.MapPost("/sources/check", CheckSources);
@@ -143,6 +149,30 @@ public static class Endpoints
         return Results.NoContent();
     }
 
+    private static async Task<IResult> SavePosition(
+        int id,
+        SavePositionRequest request,
+        AppDbContext db,
+        CancellationToken ct)
+    {
+        if (request.Episode < 1
+            || request.Seconds is < 0 or > MaxPositionSeconds
+            || request.DurationSeconds is < 0 or > MaxPositionSeconds)
+        {
+            return Results.Problem("Некорректная позиция просмотра", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var progress = await db.WatchProgress.FirstOrDefaultAsync(p => p.TitleId == id, ct);
+        if (progress is null) return Results.NotFound();
+
+        if (progress.TryUpdatePosition(request.Episode, request.Seconds, request.DurationSeconds, DateTimeOffset.UtcNow))
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Results.NoContent();
+    }
+
     private static async Task<IReadOnlyList<SourceStatus>> CheckSources(SourceHealthService health, CancellationToken ct)
     {
         await health.CheckAllAsync(ct);
@@ -204,5 +234,7 @@ public static class Endpoints
         progress.DubKey,
         progress.DubName,
         progress.SourceId,
-        progress.WatchedEpisodes);
+        progress.WatchedEpisodes,
+        progress.PositionSeconds,
+        progress.DurationSeconds);
 }

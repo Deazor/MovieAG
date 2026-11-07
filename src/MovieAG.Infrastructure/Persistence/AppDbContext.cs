@@ -89,14 +89,25 @@ public sealed class WatchProgress
     public string DubKey { get; set; } = "";
     public string DubName { get; set; } = "";
     public string SourceId { get; set; } = "";
+    public int PositionSeconds { get; set; }
+    public int? DurationSeconds { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
-    /// <summary>Серия считается просмотренной, когда пользователь переходит с неё на другую.</summary>
+    /// <summary>
+    /// Серия считается просмотренной, когда пользователь переходит с неё на другую.
+    /// Смена озвучки или плеера на той же серии позицию не сбрасывает.
+    /// </summary>
     public void MoveTo(int episode, string dubKey, string dubName, string sourceId, DateTimeOffset now)
     {
-        if (LastEpisode > 0 && LastEpisode != episode && !WatchedEpisodes.Contains(LastEpisode))
+        if (LastEpisode != episode)
         {
-            WatchedEpisodes = [.. WatchedEpisodes, LastEpisode];
+            if (LastEpisode > 0 && !WatchedEpisodes.Contains(LastEpisode))
+            {
+                WatchedEpisodes = [.. WatchedEpisodes, LastEpisode];
+            }
+
+            PositionSeconds = 0;
+            DurationSeconds = null;
         }
 
         LastEpisode = episode;
@@ -104,5 +115,16 @@ public sealed class WatchProgress
         DubName = dubName;
         SourceId = sourceId;
         UpdatedAt = now;
+    }
+
+    /// <summary>Отметка от старой серии может прийти после перехода на новую: такую не учитываем.</summary>
+    public bool TryUpdatePosition(int episode, int seconds, int? durationSeconds, DateTimeOffset now)
+    {
+        if (episode != LastEpisode) return false;
+
+        PositionSeconds = seconds;
+        DurationSeconds = durationSeconds ?? DurationSeconds;
+        UpdatedAt = now;
+        return true;
     }
 }

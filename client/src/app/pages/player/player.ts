@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   OnDestroy,
   computed,
@@ -18,7 +19,19 @@ import { catchError, combineLatest, distinctUntilChanged, forkJoin, map, of, swi
 import { ApiService } from '../../core/api.service';
 import { Loadable, closestEpisode, loadable, plural, sourceStateLabel, sourceTone } from '../../core/format';
 import { DubGroup, DubSource, HistoryItem, Playback, TitleDetails } from '../../core/models';
+import { formatTime, parsePlayerMessage, seekCommands, shouldResume } from '../../core/player-bridge';
 import { SourcesStore } from '../../core/sources.store';
+
+const POSITION_SAVE_INTERVAL_MS = 10_000;
+const SEEK_CONFIRM_TIMEOUT_MS = 5_000;
+/** Насколько близко к цели должен оказаться плеер, чтобы считать перемотку состоявшейся. */
+const SEEK_TOLERANCE_SECONDS = 30;
+
+interface ResumeState {
+  seconds: number;
+  /** pending: ждём запуска плеера; seeking: команда отправлена; manual: плеер её не выполнил. */
+  status: 'pending' | 'seeking' | 'manual';
+}
 
 interface Selection {
   dubKey: string;
@@ -44,6 +57,7 @@ export class Player implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly sources = inject(SourcesStore);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Параметры адреса: /watch/:id?dub=&episode= */
   readonly id = input.required<string>();
@@ -54,11 +68,20 @@ export class Player implements OnDestroy {
   protected readonly notice = signal('');
   protected readonly quality = signal<string | null>(null);
   protected readonly streamFailed = signal(false);
+  protected readonly resume = signal<ResumeState | null>(null);
   private readonly watched = signal<ReadonlySet<number>>(new Set());
 
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
+  private readonly frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
   private hls: Hls | null = null;
   private lastSaved = '';
+  private position = 0;
+  private duration: number | null = null;
+  private lastSavedPosition: number | null = null;
+  private lastPositionSaveAt = 0;
+  private seekTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Пока новый плеер не загрузился, старый ещё может присылать своё время: его не учитываем. */
+  private playerReady = false;
 
   protected readonly page = toSignal(
     toObservable(this.id).pipe(
@@ -180,7 +203,31 @@ export class Player implements OnDestroy {
   protected readonly canGoPrev = computed(() => this.neighbor(-1) !== null);
   protected readonly canGoNext = computed(() => this.neighbor(1) !== null);
 
+  protected readonly resumeNotice = computed(() => {
+    const resume = this.resume();
+    if (!resume) return '';
+
+    const time = formatTime(resume.seconds);
+    switch (resume.status) {
+      case 'pending':
+        return `Вы остановились на ${time}. Запустите плеер: перемотаем автоматически, а если не получится, перемотайте вручную.`;
+      case 'seeking':
+        return `Перематываем на ${time}…`;
+      case 'manual':
+        return `Этот плеер не перематывается из приложения. Перемотайте на ${time} вручную.`;
+    }
+  });
+
   constructor() {
+    const onMessage = (event: MessageEvent) => this.onPlayerMessage(event);
+    const onPageHide = () => this.flushPosition();
+    window.addEventListener('message', onMessage);
+    window.addEventListener('pagehide', onPageHide);
+    this.destroyRef.onDestroy(() => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('pagehide', onPageHide);
+    });
+
     effect((onCleanup) => {
       const url = this.streamUrl();
       const element = this.video()?.nativeElement;
@@ -200,6 +247,8 @@ export class Player implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.flushPosition();
+    this.clearSeekTimer();
     this.destroyHls();
   }
 
@@ -236,10 +285,48 @@ export class Player implements OnDestroy {
     const selection = this.selection();
     if (!selection) return;
 
+    if (source.sourceId === selection.sourceId && source.dubId === selection.dubId) return;
+
     const episode = closestEpisode(source.episodes, selection.episode) ?? selection.episode;
     this.notice.set('');
-    this.streamFailed.set(false);
-    this.selection.set({ ...selection, sourceId: source.sourceId, dubId: source.dubId, episode });
+    this.applySelection({ ...selection, sourceId: source.sourceId, dubId: source.dubId, episode });
+  }
+
+  protected pickQuality(label: string): void {
+    if (label === this.activeQuality()) return;
+    this.carryPosition();
+    this.playerReady = false;
+    this.quality.set(label);
+  }
+
+  protected restart(): void {
+    this.clearSeekTimer();
+    this.resume.set(null);
+    this.position = 0;
+  }
+
+  protected onFrameLoaded(): void {
+    this.playerReady = true;
+  }
+
+  protected onVideoLoaded(element: HTMLVideoElement): void {
+    this.playerReady = true;
+    const resume = this.resume();
+    if (resume) {
+      element.currentTime = resume.seconds;
+      this.position = resume.seconds;
+      this.resume.set(null);
+    }
+  }
+
+  protected onVideoTime(element: HTMLVideoElement): void {
+    if (!this.playerReady) return;
+    if (Number.isFinite(element.duration)) this.duration = element.duration;
+    this.reportPosition(element.currentTime);
+  }
+
+  protected onVideoPause(): void {
+    this.flushPosition();
   }
 
   protected pickEpisode(episode: number): void {
@@ -272,8 +359,99 @@ export class Player implements OnDestroy {
     const source = this.chooseSource(dub, episode, (s) => s.sourceId === current?.sourceId && s.dubId === current?.dubId);
     if (!source) return;
 
+    this.applySelection({ dubKey: dub.key, sourceId: source.sourceId, dubId: source.dubId, episode });
+  }
+
+  /** На той же серии позиция переносится в новый плеер, на другой начинаем с начала. */
+  private applySelection(next: Selection): void {
+    const previous = this.selection();
+    if (previous && previous.episode !== next.episode) {
+      this.flushPosition();
+      this.clearSeekTimer();
+      this.resume.set(null);
+      this.position = 0;
+      this.duration = null;
+      this.lastSavedPosition = null;
+    } else {
+      this.carryPosition();
+    }
+
+    this.playerReady = false;
     this.streamFailed.set(false);
-    this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, dubId: source.dubId, episode });
+    this.selection.set(next);
+  }
+
+  private carryPosition(): void {
+    this.flushPosition();
+    this.startResume(this.resume()?.seconds ?? this.position);
+  }
+
+  private startResume(seconds: number): void {
+    this.clearSeekTimer();
+    this.resume.set(shouldResume(seconds, this.duration) ? { seconds, status: 'pending' } : null);
+  }
+
+  private onPlayerMessage(event: MessageEvent): void {
+    const frame = this.frame()?.nativeElement;
+    if (!this.playerReady || !frame || event.source !== frame.contentWindow) return;
+
+    const message = parsePlayerMessage(event.data);
+    if (message?.type === 'duration') this.duration = message.seconds;
+    if (message?.type === 'time') this.reportPosition(message.seconds);
+  }
+
+  /**
+   * Первое сообщение о времени означает, что реклама закончилась и идёт сама серия.
+   * Пока плеер не дошёл до сохранённого места, позицию не перезаписываем: иначе она потеряется.
+   */
+  private reportPosition(seconds: number): void {
+    const resume = this.resume();
+    if (resume) {
+      if (seconds < resume.seconds - SEEK_TOLERANCE_SECONDS) {
+        if (resume.status === 'pending') this.requestSeek(resume.seconds);
+        return;
+      }
+      this.clearSeekTimer();
+      this.resume.set(null);
+    }
+
+    this.position = seconds;
+    if (Date.now() - this.lastPositionSaveAt >= POSITION_SAVE_INTERVAL_MS) this.flushPosition();
+  }
+
+  private requestSeek(seconds: number): void {
+    const frame = this.frame()?.nativeElement;
+    if (!frame?.contentWindow) return;
+
+    const origin = new URL(frame.src).origin;
+    for (const command of seekCommands(seconds)) {
+      frame.contentWindow.postMessage(command, origin);
+    }
+
+    this.resume.set({ seconds, status: 'seeking' });
+    this.clearSeekTimer();
+    this.seekTimer = setTimeout(() => this.resume.set({ seconds, status: 'manual' }), SEEK_CONFIRM_TIMEOUT_MS);
+  }
+
+  private clearSeekTimer(): void {
+    if (this.seekTimer !== null) clearTimeout(this.seekTimer);
+    this.seekTimer = null;
+  }
+
+  private flushPosition(): void {
+    const selection = this.selection();
+    const seconds = Math.floor(this.position);
+    if (!selection || this.resume() || seconds === this.lastSavedPosition) return;
+
+    this.lastSavedPosition = seconds;
+    this.lastPositionSaveAt = Date.now();
+    this.api
+      .savePosition(Number(this.id()), {
+        episode: selection.episode,
+        seconds,
+        durationSeconds: this.duration === null ? null : Math.floor(this.duration),
+      })
+      .subscribe({ error: (error) => console.warn('Не удалось сохранить позицию', error) });
   }
 
   /** Сохраняет текущий источник, если серия там есть; иначе берёт первый живой по приоритету. */
@@ -303,7 +481,15 @@ export class Player implements OnDestroy {
 
     const preferred = progress?.dubKey === dub.key ? progress.sourceId : undefined;
     const source = this.chooseSource(dub, episode, (s) => s.sourceId === preferred);
-    if (source) this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, dubId: source.dubId, episode });
+    if (!source) return;
+
+    if (progress?.lastEpisode === episode) {
+      this.position = progress.positionSeconds;
+      this.duration = progress.durationSeconds;
+      this.lastSavedPosition = progress.positionSeconds;
+      this.startResume(progress.positionSeconds);
+    }
+    this.selection.set({ dubKey: dub.key, sourceId: source.sourceId, dubId: source.dubId, episode });
   }
 
   private saveProgress(): void {

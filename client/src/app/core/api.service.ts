@@ -36,6 +36,11 @@ export class ApiService {
     return this.http.put<void>(`/api/history/${id}`, body);
   }
 
+  /** keepalive позволяет запросу завершиться, даже если страницу уже закрывают. */
+  savePosition(id: number, body: { episode: number; seconds: number; durationSeconds: number | null }): Observable<void> {
+    return this.http.put<void>(`/api/history/${id}/position`, body, { keepalive: true });
+  }
+
   sources(): Observable<SourceStatus[]> {
     return this.http.get<SourceStatus[]>('/api/sources');
   }
