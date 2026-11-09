@@ -1,0 +1,237 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  OnDestroy,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
+import type Hls from 'hls.js';
+import { catchError, combineLatest, forkJoin, map, of, switchMap } from 'rxjs';
+import { ApiService } from '../../core/api.service';
+import { Loadable, imdbSeed, loadable, movieMeta } from '../../core/format';
+import { attachHls } from '../../core/hls-stream';
+import { MovieDetails, MovieProgressItem, MovieStream, Playback } from '../../core/models';
+import { formatTime, shouldResume } from '../../core/player-bridge';
+import { Poster } from '../../shared/poster';
+
+const POSITION_SAVE_INTERVAL_MS = 10_000;
+
+interface PageData {
+  details: MovieDetails;
+  progress: MovieProgressItem | null;
+}
+
+@Component({
+  selector: 'app-movie',
+  imports: [RouterLink, Poster],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './movie.html',
+  styleUrls: ['../player/player.scss', './movie.scss'],
+})
+export class Movie implements OnDestroy {
+  private readonly api = inject(ApiService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Параметр адреса: /movies/:imdbId */
+  readonly imdbId = input.required<string>();
+
+  protected readonly stream = signal<MovieStream | null>(null);
+  protected readonly streamError = signal<string | null>(null);
+  /** Сохранённая позиция, на которую нужно перемотать после загрузки потока. */
+  private readonly resumeAt = signal<number | null>(null);
+  protected readonly resumedFrom = signal<string | null>(null);
+  private readonly attempt = signal(0);
+
+  private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
+  private hls: Hls | null = null;
+  private position = 0;
+  private duration: number | null = null;
+  private lastSavedPosition: number | null = null;
+  private lastSaveAt = 0;
+  private playerReady = false;
+
+  protected readonly page = toSignal(
+    toObservable(this.imdbId).pipe(
+      switchMap((id) =>
+        loadable(
+          forkJoin({
+            details: this.api.movie(id),
+            progress: this.api.movieProgress(id).pipe(catchError(() => of(null))),
+          }),
+        ),
+      ),
+      map((state) => {
+        if (state.status === 'ready') this.init(state.data);
+        return state;
+      }),
+    ),
+    { initialValue: { status: 'loading' } as Loadable<PageData> },
+  );
+
+  protected readonly playback = toSignal(
+    combineLatest([toObservable(this.stream), toObservable(this.attempt)]).pipe(
+      switchMap(([stream]) =>
+        stream
+          ? loadable(this.api.moviePlayback(this.imdbId(), stream.sourceId, stream.streamId))
+          : of<Loadable<Playback> | null>(null),
+      ),
+    ),
+    { initialValue: null },
+  );
+
+  private readonly playbackData = computed(() => {
+    const state = this.playback();
+    return state?.status === 'ready' ? state.data : null;
+  });
+
+  protected readonly streamUrl = computed(() => {
+    const data = this.playbackData();
+    return data?.kind === 'hls' ? data.url : null;
+  });
+
+  protected readonly unsupported = computed(() => this.playbackData()?.kind === 'iframe');
+
+  protected readonly failed = computed(() => this.playback()?.status === 'error' || this.streamError() !== null);
+
+  protected readonly meta = movieMeta;
+  protected readonly seed = imdbSeed;
+
+  constructor() {
+    const onPageHide = () => this.flush();
+    window.addEventListener('pagehide', onPageHide);
+    this.destroyRef.onDestroy(() => window.removeEventListener('pagehide', onPageHide));
+
+    effect((onCleanup) => {
+      const url = this.streamUrl();
+      const element = this.video()?.nativeElement;
+      if (!url || !element) return;
+
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+        this.hls?.destroy();
+        this.hls = null;
+      });
+      void this.attach(element, url, () => cancelled);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.flush();
+    this.hls?.destroy();
+    this.hls = null;
+  }
+
+  protected imdbUrl(imdbId: string): string {
+    return `https://www.imdb.com/title/${encodeURIComponent(imdbId)}/`;
+  }
+
+  protected isCurrent(item: MovieStream): boolean {
+    const current = this.stream();
+    return current?.sourceId === item.sourceId && current.streamId === item.streamId;
+  }
+
+  protected pick(item: MovieStream): void {
+    if (this.isCurrent(item)) return;
+    this.carryPosition();
+    this.stream.set(item);
+  }
+
+  protected retry(): void {
+    this.carryPosition();
+    this.attempt.update((n) => n + 1);
+  }
+
+  protected restart(): void {
+    const element = this.video()?.nativeElement;
+    if (element) element.currentTime = 0;
+    this.position = 0;
+    this.resumedFrom.set(null);
+  }
+
+  protected onLoaded(element: HTMLVideoElement): void {
+    this.playerReady = true;
+    const seconds = this.resumeAt();
+    if (seconds === null) return;
+
+    element.currentTime = seconds;
+    this.position = seconds;
+    this.resumeAt.set(null);
+    this.resumedFrom.set(formatTime(seconds));
+  }
+
+  protected onTime(element: HTMLVideoElement): void {
+    if (!this.playerReady) return;
+    if (Number.isFinite(element.duration)) this.duration = element.duration;
+    this.position = element.currentTime;
+    if (Date.now() - this.lastSaveAt >= POSITION_SAVE_INTERVAL_MS) this.flush();
+  }
+
+  protected onPause(): void {
+    this.flush();
+  }
+
+  /** При hls.js ошибки разбирает он сам, поэтому здесь только встроенный HLS. */
+  protected onError(element: HTMLVideoElement): void {
+    if (!this.hls) this.streamError.set(`MediaError ${element.error?.code ?? '?'}`);
+  }
+
+  private init({ details, progress }: PageData): void {
+    this.playerReady = false;
+    this.streamError.set(null);
+    this.resumedFrom.set(null);
+    this.position = progress?.positionSeconds ?? 0;
+    this.duration = progress?.durationSeconds ?? null;
+    this.lastSavedPosition = progress?.positionSeconds ?? null;
+    this.resumeAt.set(shouldResume(this.position, this.duration) ? this.position : null);
+
+    const saved = details.streams.find((s) => s.sourceId === progress?.sourceId && s.streamId === progress?.streamId);
+    this.stream.set(saved ?? details.streams[0] ?? null);
+  }
+
+  /** При смене варианта или повторе продолжаем с того же места. */
+  private carryPosition(): void {
+    this.flush();
+    this.playerReady = false;
+    this.streamError.set(null);
+    this.resumeAt.set(this.resumeAt() ?? (shouldResume(this.position, this.duration) ? this.position : null));
+  }
+
+  private flush(): void {
+    const stream = this.stream();
+    const seconds = Math.floor(this.position);
+    if (!stream || !this.playerReady || seconds === 0 || seconds === this.lastSavedPosition) return;
+
+    this.lastSavedPosition = seconds;
+    this.lastSaveAt = Date.now();
+    this.api
+      .saveMovieProgress(this.imdbId(), {
+        sourceId: stream.sourceId,
+        streamId: stream.streamId,
+        seconds,
+        durationSeconds: this.duration === null ? null : Math.floor(this.duration),
+      })
+      .subscribe({ error: (error) => console.warn('Не удалось сохранить позицию', error) });
+  }
+
+  private async attach(element: HTMLVideoElement, url: string, isCancelled: () => boolean): Promise<void> {
+    const hls = await attachHls(element, url, {
+      isCancelled,
+      onReload: (currentTime) => {
+        if (currentTime > 0) this.resumeAt.set(currentTime);
+      },
+      onFatal: (detail) => this.streamError.set(detail),
+    });
+
+    if (isCancelled()) hls?.destroy();
+    else this.hls = hls;
+  }
+}

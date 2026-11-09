@@ -72,6 +72,46 @@ namespace MovieAG.Infrastructure.Persistence.Migrations
                     b.ToTable("cached_titles", (string)null);
                 });
 
+            modelBuilder.Entity("MovieAG.Infrastructure.Persistence.MovieProgress", b =>
+                {
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("PositionSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PosterUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("StreamId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ImdbId");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("movie_progress", (string)null);
+                });
+
             modelBuilder.Entity("MovieAG.Infrastructure.Persistence.WatchProgress", b =>
                 {
                     b.Property<int>("TitleId")

@@ -1,7 +1,17 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
-import { HistoryItem, Playback, SearchResult, SourceStatus, TitleCard, TitleDetails } from './models';
+import {
+  HistoryItem,
+  MovieDetails,
+  MovieListResult,
+  MovieProgressItem,
+  Playback,
+  SearchResult,
+  SourceStatus,
+  TitleCard,
+  TitleDetails,
+} from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -39,6 +49,35 @@ export class ApiService {
   /** keepalive позволяет запросу завершиться, даже если страницу уже закрывают. */
   savePosition(id: number, body: { episode: number; seconds: number; durationSeconds: number | null }): Observable<void> {
     return this.http.put<void>(`/api/history/${id}/position`, body, { keepalive: true });
+  }
+
+  /** Без запроса возвращает последние фильмы источников. */
+  movies(query: string): Observable<MovieListResult> {
+    return this.http.get<MovieListResult>('/api/movies', { params: query ? { q: query } : {} });
+  }
+
+  movie(imdbId: string): Observable<MovieDetails> {
+    return this.http.get<MovieDetails>(`/api/movies/${imdbId}`);
+  }
+
+  moviePlayback(imdbId: string, sourceId: string, streamId: string): Observable<Playback> {
+    const params = new HttpParams().set('source', sourceId).set('stream', streamId);
+    return this.http.get<Playback>(`/api/movies/${imdbId}/playback`, { params });
+  }
+
+  movieHistory(): Observable<MovieProgressItem[]> {
+    return this.http.get<MovieProgressItem[]>('/api/movies/history');
+  }
+
+  movieProgress(imdbId: string): Observable<MovieProgressItem> {
+    return this.http.get<MovieProgressItem>(`/api/movies/${imdbId}/progress`);
+  }
+
+  saveMovieProgress(
+    imdbId: string,
+    body: { sourceId: string; streamId: string; seconds: number; durationSeconds: number | null },
+  ): Observable<void> {
+    return this.http.put<void>(`/api/movies/${imdbId}/progress`, body, { keepalive: true });
   }
 
   sources(): Observable<SourceStatus[]> {

@@ -51,6 +51,19 @@ export function titleMeta(item: { kind: string | null; year: number | null; epis
   return parts.join(' · ');
 }
 
+/** Число для цвета типографического постера: tt1254207 → 1254207. */
+export function imdbSeed(imdbId: string): number {
+  return Number(imdbId.slice(2)) || 0;
+}
+
+export function movieMeta(movie: { year: number | null; runtimeMinutes: number | null; genres: string[] }): string {
+  const parts: string[] = [];
+  if (movie.year) parts.push(String(movie.year));
+  if (movie.runtimeMinutes) parts.push(`${movie.runtimeMinutes} мин`);
+  parts.push(...movie.genres);
+  return parts.join(' · ');
+}
+
 export function sourcesSummary(statuses: SourceStatus[]): { label: string; tone: 'ok' | 'warn' | 'bad' | '' } {
   const enabled = statuses.filter((s) => s.enabled);
   if (enabled.length === 0) return { label: 'Нет включённых источников', tone: 'bad' };

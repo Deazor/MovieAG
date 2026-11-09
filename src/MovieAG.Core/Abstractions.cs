@@ -1,10 +1,16 @@
 namespace MovieAG.Core;
 
-/// <summary>Адаптер источника видео: балансера, API или сайта.</summary>
-public interface IAnimeSource
+/// <summary>Источник, доступность которого показывается на экране «Источники».</summary>
+public interface IMonitoredSource
 {
     string Id { get; }
 
+    Task PingAsync(CancellationToken ct);
+}
+
+/// <summary>Адаптер источника видео: балансера, API или сайта.</summary>
+public interface IAnimeSource : IMonitoredSource
+{
     Task<IReadOnlyList<SourceTitle>> SearchAsync(string query, CancellationToken ct);
 
     Task<IReadOnlyList<SourceTitle>> GetLatestAsync(int limit, CancellationToken ct);
@@ -12,8 +18,6 @@ public interface IAnimeSource
     Task<IReadOnlyList<DubVariant>> GetVariantsAsync(CatalogTitle title, CancellationToken ct);
 
     Task<Playback?> GetPlaybackAsync(CatalogTitle title, string dubId, int episode, CancellationToken ct);
-
-    Task PingAsync(CancellationToken ct);
 }
 
 public interface ICatalog

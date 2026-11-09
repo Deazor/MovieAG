@@ -8,8 +8,6 @@ public sealed class AggregationService(
     ICatalog catalog,
     ILogger<AggregationService> logger)
 {
-    private static readonly TimeSpan SourceTimeout = TimeSpan.FromSeconds(10);
-
     public async Task<SearchResult> SearchAsync(string query, CancellationToken ct)
     {
         var active = sources.Active;
@@ -46,7 +44,7 @@ public sealed class AggregationService(
         if (title is null) return null;
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(SourceTimeout);
+        timeout.CancelAfter(SourceFanOut.SourceTimeout);
         return await source.GetPlaybackAsync(title, dubId, episode, timeout.Token);
     }
 
@@ -77,29 +75,9 @@ public sealed class AggregationService(
         }
     }
 
-    private async Task<(IReadOnlyList<T> Results, IReadOnlyList<string> Failed)> QueryAllAsync<T>(
+    private Task<(IReadOnlyList<T> Results, IReadOnlyList<string> Failed)> QueryAllAsync<T>(
         IReadOnlyList<IAnimeSource> active,
         Func<IAnimeSource, CancellationToken, Task<T>> call,
-        CancellationToken ct)
-    {
-        var tasks = active.Select(async source =>
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(SourceTimeout);
-            try
-            {
-                return (source.Id, Ok: true, Value: await call(source, timeout.Token));
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
-            {
-                logger.LogWarning(ex, "Источник {Source} не ответил", source.Id);
-                return (source.Id, Ok: false, Value: default(T)!);
-            }
-        });
-
-        var done = await Task.WhenAll(tasks);
-        return (
-            done.Where(d => d.Ok).Select(d => d.Value).ToList(),
-            done.Where(d => !d.Ok).Select(d => d.Id).ToList());
-    }
+        CancellationToken ct) =>
+        SourceFanOut.QueryAllAsync(active, call, logger, ct);
 }

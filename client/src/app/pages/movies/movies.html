@@ -1,0 +1,69 @@
+<main class="movies">
+  <div class="head">
+    <h1 class="page-title">{{ query() || 'Фильмы' }}</h1>
+    @let state = result();
+    @if (state.status === 'ready') {
+      <p class="muted">
+        {{ countLabel(state.data.items.length) }}
+        @if (state.data.failedSources.length > 0) {
+          · <a routerLink="/sources">Не ответили: {{ state.data.failedSources.join(', ') }}</a>
+        }
+      </p>
+    }
+  </div>
+
+  @let historyState = history();
+  @if (!query() && historyState.status === 'ready' && historyState.data.length > 0) {
+    <section class="block" aria-labelledby="movie-continue-h">
+      <h2 id="movie-continue-h" class="section-title">Продолжить просмотр</h2>
+      <div class="continue-grid">
+        @for (item of historyState.data; track item.imdbId) {
+          <a class="continue-card" [routerLink]="['/movies', item.imdbId]">
+            <app-poster class="thumb" [url]="item.posterUrl" [text]="item.name" [seed]="seed(item.imdbId)" [fontSize]="13" [sun]="false" />
+            <div class="continue-body">
+              <div class="continue-name">{{ item.name }}</div>
+              <div class="muted small">{{ stoppedAt(item) ?? 'Просмотрено' }}</div>
+              <div class="progress" aria-hidden="true">
+                <div class="progress-fill" [style.width.%]="progressPercent(item)"></div>
+              </div>
+            </div>
+          </a>
+        }
+      </div>
+    </section>
+  }
+
+  <section class="block" aria-label="Список фильмов">
+    @switch (state.status) {
+      @case ('loading') {
+        <p class="state-message">Загружаем фильмы…</p>
+      }
+      @case ('error') {
+        <p class="state-message">Не удалось получить список. Проверьте, что сервер запущен, и повторите запрос.</p>
+      }
+      @case ('ready') {
+        @if (state.data.items.length === 0) {
+          <p class="state-message">
+            @if (query()) {
+              Ничего не нашлось.
+            } @else {
+              Пока пусто. Добавьте фильмы в секцию <span class="mono">movies</span> на странице <a routerLink="/sources">Источники</a>.
+            }
+          </p>
+        } @else {
+          <div class="grid">
+            @for (item of state.data.items; track item.imdbId) {
+              <a class="card" [routerLink]="['/movies', item.imdbId]">
+                <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="seed(item.imdbId)" />
+                <div class="card-name">{{ item.name }}</div>
+                <div class="muted small">
+                  @if (item.year) { {{ item.year }} · }<span class="mono">{{ item.imdbId }}</span>
+                </div>
+              </a>
+            }
+          </div>
+        }
+      }
+    }
+  </section>
+</main>

@@ -1,0 +1,113 @@
+@let state = page();
+@switch (state.status) {
+  @case ('loading') {
+    <main class="page"><p class="state-message">Загружаем фильм…</p></main>
+  }
+  @case ('error') {
+    <main class="page">
+      <p class="state-message">
+        @if (state.httpStatus === 404) {
+          Такого фильма нет ни в источниках, ни в каталоге.
+        } @else {
+          Не удалось загрузить фильм. Повторите попытку позже.
+        }
+      </p>
+    </main>
+  }
+  @case ('ready') {
+    @let movie = state.data.details.movie;
+    <div class="back-row">
+      <a class="back" routerLink="/movies">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        <span>Все фильмы</span>
+      </a>
+    </div>
+
+    <main class="layout">
+      <section class="stage" aria-label="Видео">
+        <div class="frame">
+          @if (!stream()) {
+            <div class="frame-message">
+              <div class="frame-title">Фильма нет в источниках</div>
+              <div class="muted">Добавьте его в секцию <span class="mono">movies</span> на странице <a routerLink="/sources">Источники</a>.</div>
+            </div>
+          } @else if (failed()) {
+            <div class="frame-message">
+              <div class="frame-title">Видео не загрузилось</div>
+              <div class="frame-actions">
+                <button type="button" class="btn" (click)="retry()">Повторить</button>
+              </div>
+              @if (streamError(); as detail) {
+                <div class="frame-detail mono">{{ detail }}</div>
+              }
+            </div>
+          } @else if (unsupported()) {
+            <div class="frame-message"><div class="frame-title">Этот формат потока не поддерживается</div></div>
+          } @else if (streamUrl()) {
+            <video
+              #video
+              controls
+              autoplay
+              playsinline
+              (error)="onError(video)"
+              (loadedmetadata)="onLoaded(video)"
+              (timeupdate)="onTime(video)"
+              (pause)="onPause()"
+            ></video>
+          } @else {
+            <div class="frame-message"><div class="muted">Загружаем поток…</div></div>
+          }
+        </div>
+
+        <div class="stage-info">
+          <div class="stage-title">
+            <h1>{{ movie.name }}</h1>
+            @if (movie.originalName && movie.originalName !== movie.name) {
+              <div class="small muted">{{ movie.originalName }}</div>
+            }
+          </div>
+        </div>
+
+        @if (resumedFrom(); as time) {
+          <div class="notice resume" role="status">
+            <span>Продолжаем с {{ time }}.</span>
+            <button type="button" class="btn" (click)="restart()">С начала</button>
+          </div>
+        }
+
+        @if (movie.description) {
+          <p class="description">{{ movie.description }}</p>
+        }
+      </section>
+
+      <aside class="rail" aria-label="О фильме">
+        <div class="about">
+          <app-poster class="about-poster" [url]="movie.posterUrl" [text]="movie.originalName ?? movie.name" [seed]="seed(movie.imdbId)" />
+          <div class="about-text">
+            @if (meta(movie); as line) {
+              <div class="small muted">{{ line }}</div>
+            }
+            <a class="mono small" [href]="imdbUrl(movie.imdbId)" target="_blank" rel="noopener noreferrer">{{ movie.imdbId }}</a>
+          </div>
+        </div>
+
+        @if (state.data.details.streams.length > 0) {
+          <div class="group" role="group" aria-labelledby="stream-h">
+            <h2 id="stream-h" class="label">Вариант просмотра</h2>
+            <div class="chips">
+              @for (item of state.data.details.streams; track item.sourceId + item.streamId) {
+                <button type="button" class="chip" [attr.aria-pressed]="isCurrent(item)" (click)="pick(item)">
+                  <span>{{ item.label }}</span>
+                  <span class="chip-sub">{{ item.sourceId }}</span>
+                </button>
+              }
+            </div>
+            @if (stream()?.license; as license) {
+              <div class="small muted">Лицензия: {{ license }}</div>
+            }
+          </div>
+        }
+      </aside>
+    </main>
+  }
+}

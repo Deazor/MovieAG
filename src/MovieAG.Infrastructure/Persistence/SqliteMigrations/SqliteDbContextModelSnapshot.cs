@@ -65,6 +65,46 @@ namespace MovieAG.Infrastructure.Persistence.SqliteMigrations
                     b.ToTable("cached_titles", (string)null);
                 });
 
+            modelBuilder.Entity("MovieAG.Infrastructure.Persistence.MovieProgress", b =>
+                {
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PositionSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PosterUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StreamId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ImdbId");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("movie_progress", (string)null);
+                });
+
             modelBuilder.Entity("MovieAG.Infrastructure.Persistence.WatchProgress", b =>
                 {
                     b.Property<int>("TitleId")

@@ -34,10 +34,15 @@ export class App {
     return tree.queryParams['q'] ?? '';
   });
 
+  protected readonly inMovies = computed(() => /^\/movies(\/|\?|$)/.test(this.url()));
+
   protected submitSearch(event: Event, query: string): void {
     event.preventDefault();
     const q = query.trim();
-    if (q.length >= 2) {
+
+    if (this.inMovies() && q.length !== 1) {
+      void this.router.navigate(['/movies'], { queryParams: q ? { q } : {} });
+    } else if (q.length >= 2) {
       void this.router.navigate(['/search'], { queryParams: { q } });
     }
   }

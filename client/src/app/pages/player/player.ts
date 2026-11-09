@@ -18,6 +18,7 @@ import type Hls from 'hls.js';
 import { catchError, combineLatest, distinctUntilChanged, forkJoin, map, of, retry, switchMap, throwError, timer } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Loadable, closestEpisode, loadable, plural, sourceStateLabel, sourceTone } from '../../core/format';
+import { attachHls } from '../../core/hls-stream';
 import { DubGroup, DubSource, HistoryItem, Playback, TitleDetails } from '../../core/models';
 import { formatTime, parsePlayerMessage, seekCommands, shouldResume } from '../../core/player-bridge';
 import { SourcesStore } from '../../core/sources.store';
@@ -25,8 +26,6 @@ import { SourcesStore } from '../../core/sources.store';
 const POSITION_SAVE_INTERVAL_MS = 10_000;
 const SEEK_CONFIRM_TIMEOUT_MS = 5_000;
 const PLAYBACK_RETRY_DELAY_MS = 1_500;
-const MAX_NETWORK_RETRIES = 2;
-const NETWORK_RETRY_DELAY_MS = 1_500;
 /** Насколько близко к цели должен оказаться плеер, чтобы считать перемотку состоявшейся. */
 const SEEK_TOLERANCE_SECONDS = 30;
 
@@ -544,43 +543,16 @@ export class Player implements OnDestroy {
   }
 
   private async attachStream(element: HTMLVideoElement, url: string, isCancelled: () => boolean): Promise<void> {
-    const { default: HlsLib } = await import('hls.js');
-    if (isCancelled()) return;
-
-    if (!HlsLib.isSupported()) {
-      element.src = url;
-      return;
-    }
-
-    const hls = new HlsLib();
-    this.hls = hls;
-
-    // Сначала пробуем восстановиться сами: сеть перезапрашиваем, декодер пересоздаём, и только потом сдаёмся.
-    let networkRetries = 0;
-    let mediaRecovered = false;
-    hls.on(HlsLib.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return;
-
-      if (data.type === HlsLib.ErrorTypes.NETWORK_ERROR && networkRetries < MAX_NETWORK_RETRIES) {
-        networkRetries++;
-        // startLoad не перезапрашивает упавший плейлист, поэтому загружаем поток заново с текущего места.
-        if (element.currentTime > 0) this.startResume(element.currentTime);
-        setTimeout(() => {
-          if (this.hls === hls && !isCancelled()) hls.loadSource(url);
-        }, NETWORK_RETRY_DELAY_MS * networkRetries);
-        return;
-      }
-      if (data.type === HlsLib.ErrorTypes.MEDIA_ERROR && !mediaRecovered) {
-        mediaRecovered = true;
-        hls.recoverMediaError();
-        return;
-      }
-
-      console.warn('Поток не воспроизводится', data);
-      this.streamError.set(`${data.type} · ${data.details}`);
+    const hls = await attachHls(element, url, {
+      isCancelled,
+      onReload: (currentTime) => {
+        if (currentTime > 0) this.startResume(currentTime);
+      },
+      onFatal: (detail) => this.streamError.set(detail),
     });
-    hls.loadSource(url);
-    hls.attachMedia(element);
+
+    if (isCancelled()) hls?.destroy();
+    else this.hls = hls;
   }
 
   private destroyHls(): void {

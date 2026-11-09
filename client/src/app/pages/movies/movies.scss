@@ -1,0 +1,81 @@
+.movies {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.small { font-size: 14px; }
+
+.continue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 16px;
+}
+
+.continue-card {
+  display: flex;
+  gap: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.thumb { flex: 0 0 76px; align-self: flex-start; }
+
+.continue-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.continue-name { font-weight: 600; text-wrap: pretty; }
+
+.progress {
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress-fill { height: 4px; background: var(--accent); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr));
+  gap: 24px 16px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.card-name { font-size: 15px; font-weight: 600; text-wrap: pretty; }
+
+@media (max-width: 600px) {
+  .movies { padding: 24px 16px 48px; }
+}

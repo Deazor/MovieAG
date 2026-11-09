@@ -28,3 +28,35 @@ sources:
     type: site
     url: https://site.example.com
     enabled: false
+
+# Фильмы: карточки по IMDb ID, метаданные из TMDB
+movies:
+  # Без токена карточки строятся из полей библиотеки
+  catalog:
+    url: https://api.themoviedb.org
+    imagesUrl: https://image.tmdb.org/t/p/w500
+    token: ${TMDB_TOKEN}
+
+  sources:
+    # Открытые фильмы и собственные HLS-потоки. Несколько записей с одним imdbId станут вариантами просмотра
+    - id: open-movies
+      adapter: library
+      type: library
+      items:
+        - imdbId: tt1254207
+          name: Большой кролик
+          originalName: Big Buck Bunny
+          year: 2008
+          description: Короткометражный мультфильм Blender Foundation о добродушном кролике и трёх вредных грызунах.
+          genres: [Мультфильм, Комедия]
+          license: CC BY 3.0
+          url: https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+
+        - imdbId: tt2285752
+          name: Слёзы стали
+          originalName: Tears of Steel
+          year: 2012
+          description: Научно-фантастическая короткометражка Blender Foundation о попытке изменить прошлое ради спасения мира.
+          genres: [Фантастика]
+          license: CC BY 3.0
+          url: https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8

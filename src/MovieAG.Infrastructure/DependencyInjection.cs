@@ -44,12 +44,17 @@ public static class DependencyInjection
 
         services.AddHttpClient(SourceRegistry.HttpClientName, ConfigureClient);
         services.AddHttpClient<ShikimoriCatalog>(ConfigureClient);
+        services.AddHttpClient<TmdbCatalog>(ConfigureClient);
 
         services.AddSingleton(_ => new SourcesConfigStore(sourcesConfigPath, configuration));
-        services.AddSingleton<ISourceProvider, SourceRegistry>();
+        services.AddSingleton<SourceRegistry>();
+        services.AddSingleton<ISourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
+        services.AddSingleton<IMovieSourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
         services.AddSingleton<SourceHealthService>();
         services.AddScoped<ICatalog, CachedCatalog>();
         services.AddScoped<AggregationService>();
+        services.AddTransient<IMovieCatalog>(sp => sp.GetRequiredService<TmdbCatalog>());
+        services.AddScoped<MovieService>();
 
         services.AddQuartz(quartz =>
         {

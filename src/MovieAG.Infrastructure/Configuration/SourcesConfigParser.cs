@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using MovieAG.Core;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -8,6 +9,7 @@ namespace MovieAG.Infrastructure.Configuration;
 public static partial class SourcesConfigParser
 {
     private static readonly string[] AllowedTypes = ["balancer", "api", "site"];
+    private static readonly string[] AllowedMovieTypes = ["library", "api"];
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -28,11 +30,12 @@ public static partial class SourcesConfigParser
 
         Validate(config);
 
-        foreach (var source in config.Sources)
+        foreach (var source in config.Sources.Concat<SourceDefinition>(config.Movies.Sources))
         {
             source.Token = ResolveToken(source.Token, resolveVariable);
         }
 
+        config.Movies.Catalog.Token = ResolveToken(config.Movies.Catalog.Token, resolveVariable);
         return config;
     }
 
@@ -78,7 +81,22 @@ public static partial class SourcesConfigParser
             errors.Add("catalog.url: нужен абсолютный адрес");
         }
 
-        foreach (var (source, index) in config.Sources.Select((s, i) => (s, i + 1)))
+        ValidateSources(config.Sources, AllowedTypes, errors);
+        ValidateMovies(config.Movies, errors);
+
+        // Id уникален на весь файл: по нему SetEnabled ищет строку в YAML.
+        errors.AddRange(config.Sources.Concat<SourceDefinition>(config.Movies.Sources)
+            .Where(s => !string.IsNullOrWhiteSpace(s.Id))
+            .GroupBy(s => s.Id)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key}: id повторяется"));
+
+        if (errors.Count > 0) throw new SourcesConfigException(errors);
+    }
+
+    private static void ValidateSources(IEnumerable<SourceDefinition> sources, string[] allowedTypes, List<string> errors)
+    {
+        foreach (var (source, index) in sources.Select((s, i) => (s, i + 1)))
         {
             if (string.IsNullOrWhiteSpace(source.Id))
             {
@@ -86,9 +104,9 @@ public static partial class SourcesConfigParser
                 continue;
             }
 
-            if (!AllowedTypes.Contains(source.Type))
+            if (!allowedTypes.Contains(source.Type))
             {
-                errors.Add($"{source.Id}: type должен быть одним из: {string.Join(", ", AllowedTypes)}");
+                errors.Add($"{source.Id}: type должен быть одним из: {string.Join(", ", allowedTypes)}");
             }
 
             if (source.Url is not null && !IsHttpUrl(source.Url))
@@ -96,14 +114,25 @@ public static partial class SourcesConfigParser
                 errors.Add($"{source.Id}: url должен начинаться с http:// или https://");
             }
         }
+    }
 
-        errors.AddRange(config.Sources
-            .Where(s => !string.IsNullOrWhiteSpace(s.Id))
-            .GroupBy(s => s.Id)
-            .Where(g => g.Count() > 1)
-            .Select(g => $"{g.Key}: id повторяется"));
+    private static void ValidateMovies(MoviesConfig movies, List<string> errors)
+    {
+        if (!IsHttpUrl(movies.Catalog.Url)) errors.Add("movies.catalog.url: нужен абсолютный адрес");
+        if (!IsHttpUrl(movies.Catalog.ImagesUrl)) errors.Add("movies.catalog.imagesUrl: нужен абсолютный адрес");
 
-        if (errors.Count > 0) throw new SourcesConfigException(errors);
+        ValidateSources(movies.Sources, AllowedMovieTypes, errors);
+
+        foreach (var source in movies.Sources)
+        {
+            foreach (var (item, index) in source.Items.Select((m, i) => (m, i + 1)))
+            {
+                var label = $"{source.Id}, фильм №{index}";
+                if (!ImdbId.IsValid(item.ImdbId)) errors.Add($"{label}: imdbId должен иметь вид tt1234567");
+                if (string.IsNullOrWhiteSpace(item.Name)) errors.Add($"{label}: не указан name");
+                if (!IsHttpUrl(item.Url)) errors.Add($"{label}: url должен начинаться с http:// или https://");
+            }
+        }
     }
 
     private static bool IsHttpUrl(string url) =>

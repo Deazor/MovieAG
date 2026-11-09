@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
 using MovieAG.Core;
 
 namespace MovieAG.Infrastructure.Persistence;
@@ -18,6 +19,7 @@ public class AppDbContext : DbContext
 
     public DbSet<CachedTitle> CachedTitles => Set<CachedTitle>();
     public DbSet<WatchProgress> WatchProgress => Set<WatchProgress>();
+    public DbSet<MovieProgress> MovieProgress => Set<MovieProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,7 +41,41 @@ public class AppDbContext : DbContext
             entity.Property(p => p.SourceId).HasMaxLength(100);
             entity.HasIndex(p => p.UpdatedAt);
         });
+
+        modelBuilder.Entity<MovieProgress>(entity =>
+        {
+            entity.ToTable("movie_progress");
+            entity.HasKey(p => p.ImdbId);
+            entity.Property(p => p.ImdbId).HasMaxLength(16).ValueGeneratedNever();
+            entity.Property(p => p.Name).HasMaxLength(500);
+            entity.Property(p => p.SourceId).HasMaxLength(100);
+            entity.Property(p => p.StreamId).HasMaxLength(200);
+            entity.HasIndex(p => p.UpdatedAt);
+        });
     }
+}
+
+/// <summary>
+/// Нужен только инструменту dotnet ef. Без него для AppDbContext берётся фабрика наследника
+/// (интерфейс фабрики ковариантен), и миграции PostgreSQL получают типы SQLite. Подключения не открывает.
+/// </summary>
+public sealed class PostgresDesignTimeFactory : IDesignTimeDbContextFactory<AppDbContext>
+{
+    public AppDbContext CreateDbContext(string[] args) =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=design").Options);
+}
+
+/// <summary>Позиция просмотра фильма. Название и постер хранятся здесь, чтобы история не зависела от каталога.</summary>
+public sealed class MovieProgress
+{
+    public string ImdbId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? PosterUrl { get; set; }
+    public string SourceId { get; set; } = "";
+    public string StreamId { get; set; } = "";
+    public int PositionSeconds { get; set; }
+    public int? DurationSeconds { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class CachedTitle

@@ -14,20 +14,23 @@ public sealed record SourceStatus(string Id, string Type, bool Enabled, SourceSt
 public sealed class SourceHealthService(
     SourcesConfigStore store,
     ISourceProvider sources,
+    IMovieSourceProvider movieSources,
     ILogger<SourceHealthService> logger)
 {
     private static readonly TimeSpan PingTimeout = TimeSpan.FromSeconds(10);
 
     private readonly ConcurrentDictionary<string, (bool Online, int LatencyMs, DateTimeOffset CheckedAt)> _results = new();
 
-    public IReadOnlyList<SourceStatus> GetStatuses() => store.Current.Sources.Select(ToStatus).ToList();
+    public IReadOnlyList<SourceStatus> GetStatuses() =>
+        store.Current.Sources.Concat<SourceDefinition>(store.Current.Movies.Sources).Select(ToStatus).ToList();
 
     public async Task CheckAllAsync(CancellationToken ct)
     {
-        await Task.WhenAll(sources.Active.Select(source => CheckAsync(source, ct)));
+        var all = sources.Active.Concat<IMonitoredSource>(movieSources.Active);
+        await Task.WhenAll(all.Select(source => CheckAsync(source, ct)));
     }
 
-    private async Task CheckAsync(IAnimeSource source, CancellationToken ct)
+    private async Task CheckAsync(IMonitoredSource source, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(PingTimeout);

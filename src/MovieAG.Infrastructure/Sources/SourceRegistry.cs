@@ -6,7 +6,7 @@ namespace MovieAG.Infrastructure.Sources;
 public enum SourceReadiness { Ready, Disabled, NeedsToken, NoAdapter }
 
 /// <summary>Строит адаптеры из конфига и пересобирает их при его изменении.</summary>
-public sealed class SourceRegistry : ISourceProvider
+public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
 {
     public const string HttpClientName = "sources";
 
@@ -17,9 +17,15 @@ public sealed class SourceRegistry : ISourceProvider
         [YummySource.AdapterName] = ((http, def) => new YummySource(http, def), false)
     };
 
+    private static readonly Dictionary<string, (Func<HttpClient, MovieSourceDefinition, IMovieSource> Create, bool NeedsToken)> MovieAdapters = new()
+    {
+        [MovieLibrarySource.AdapterName] = ((http, def) => new MovieLibrarySource(http, def), false)
+    };
+
     private readonly SourcesConfigStore _store;
     private readonly IHttpClientFactory _httpClients;
     private volatile IReadOnlyList<IAnimeSource> _active = [];
+    private volatile IReadOnlyList<IMovieSource> _activeMovies = [];
 
     public SourceRegistry(SourcesConfigStore store, IHttpClientFactory httpClients)
     {
@@ -31,20 +37,36 @@ public sealed class SourceRegistry : ISourceProvider
 
     public IReadOnlyList<IAnimeSource> Active => _active;
 
+    IReadOnlyList<IMovieSource> IMovieSourceProvider.Active => _activeMovies;
+
     public static SourceReadiness GetReadiness(SourceDefinition definition)
     {
         if (!definition.Enabled) return SourceReadiness.Disabled;
-        if (!Adapters.TryGetValue(definition.AdapterName, out var adapter)) return SourceReadiness.NoAdapter;
-        return adapter.NeedsToken && string.IsNullOrEmpty(definition.Token)
-            ? SourceReadiness.NeedsToken
-            : SourceReadiness.Ready;
+
+        bool? needsToken = definition is MovieSourceDefinition
+            ? MovieAdapters.TryGetValue(definition.AdapterName, out var movie) ? movie.NeedsToken : null
+            : Adapters.TryGetValue(definition.AdapterName, out var anime) ? anime.NeedsToken : null;
+
+        return needsToken switch
+        {
+            null => SourceReadiness.NoAdapter,
+            true when string.IsNullOrEmpty(definition.Token) => SourceReadiness.NeedsToken,
+            _ => SourceReadiness.Ready
+        };
     }
 
     private void Rebuild()
     {
-        _active = _store.Current.Sources
+        var config = _store.Current;
+
+        _active = config.Sources
             .Where(s => GetReadiness(s) == SourceReadiness.Ready)
             .Select(s => Adapters[s.AdapterName].Create(_httpClients.CreateClient(HttpClientName), s))
+            .ToList();
+
+        _activeMovies = config.Movies.Sources
+            .Where(s => GetReadiness(s) == SourceReadiness.Ready)
+            .Select(s => MovieAdapters[s.AdapterName].Create(_httpClients.CreateClient(HttpClientName), s))
             .ToList();
     }
 }

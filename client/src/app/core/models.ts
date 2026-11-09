@@ -84,6 +84,55 @@ export interface HistoryItem {
   durationSeconds: number | null;
 }
 
+export interface MovieCard {
+  imdbId: string;
+  name: string;
+  originalName: string | null;
+  year: number | null;
+  posterUrl: string | null;
+  sources: string[];
+}
+
+export interface MovieListResult {
+  items: MovieCard[];
+  queriedSources: string[];
+  failedSources: string[];
+}
+
+export interface MovieTitle {
+  imdbId: string;
+  name: string;
+  originalName: string | null;
+  year: number | null;
+  runtimeMinutes: number | null;
+  description: string | null;
+  posterUrl: string | null;
+  genres: string[];
+}
+
+export interface MovieStream {
+  sourceId: string;
+  streamId: string;
+  label: string;
+  license: string | null;
+}
+
+export interface MovieDetails {
+  movie: MovieTitle;
+  streams: MovieStream[];
+  failedSources: string[];
+}
+
+export interface MovieProgressItem {
+  imdbId: string;
+  name: string;
+  posterUrl: string | null;
+  sourceId: string;
+  streamId: string;
+  positionSeconds: number;
+  durationSeconds: number | null;
+}
+
 export interface SourceStatus {
   id: string;
   type: string;

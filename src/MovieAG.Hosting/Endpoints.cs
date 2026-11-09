@@ -60,6 +60,8 @@ public static class Endpoints
         api.MapGet("/sources/config", async (SourcesConfigStore store, CancellationToken ct) =>
             new ConfigDto(await store.ReadRawAsync(ct)));
         api.MapPut("/sources/config", SaveConfig);
+
+        api.MapMovies();
     }
 
     private static async Task<IResult> Search(string? q, AggregationService service, CancellationToken ct)
