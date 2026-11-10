@@ -24,7 +24,9 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
     private static readonly Dictionary<string, (Func<AdapterServices, MovieSourceDefinition, IMovieSource> Create, bool NeedsToken)> MovieAdapters = new()
     {
         [MovieLibrarySource.AdapterName] = ((s, def) => new MovieLibrarySource(s.Http, def), false),
-        [KodikMovieSource.AdapterName] = ((s, def) => new KodikMovieSource(s.Http, def, s.KodikTokens), false)
+        [KodikMovieSource.AdapterName] = ((s, def) => new KodikMovieSource(s.Http, def, s.KodikTokens), false),
+        // Открытого токена у Alloha нет: без своего токена источник ждёт его на экране «Источники».
+        [AllohaMovieSource.AdapterName] = ((s, def) => new AllohaMovieSource(s.Http, def), true)
     };
 
     private readonly SourcesConfigStore _store;
