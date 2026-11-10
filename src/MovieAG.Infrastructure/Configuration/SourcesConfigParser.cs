@@ -9,7 +9,7 @@ namespace MovieAG.Infrastructure.Configuration;
 public static partial class SourcesConfigParser
 {
     private static readonly string[] AllowedTypes = ["balancer", "api", "site"];
-    private static readonly string[] AllowedMovieTypes = ["library", "api"];
+    private static readonly string[] AllowedMovieTypes = ["library", "api", "balancer"];
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)

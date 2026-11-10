@@ -21,9 +21,10 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
         [YummySource.AdapterName] = ((s, def) => new YummySource(s.Http, def), false)
     };
 
-    private static readonly Dictionary<string, (Func<HttpClient, MovieSourceDefinition, IMovieSource> Create, bool NeedsToken)> MovieAdapters = new()
+    private static readonly Dictionary<string, (Func<AdapterServices, MovieSourceDefinition, IMovieSource> Create, bool NeedsToken)> MovieAdapters = new()
     {
-        [MovieLibrarySource.AdapterName] = ((http, def) => new MovieLibrarySource(http, def), false)
+        [MovieLibrarySource.AdapterName] = ((s, def) => new MovieLibrarySource(s.Http, def), false),
+        [KodikMovieSource.AdapterName] = ((s, def) => new KodikMovieSource(s.Http, def, s.KodikTokens), false)
     };
 
     private readonly SourcesConfigStore _store;
@@ -67,12 +68,14 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
 
         _active = config.Sources
             .Where(s => GetReadiness(s) == SourceReadiness.Ready)
-            .Select(s => Adapters[s.AdapterName].Create(new AdapterServices(_httpClients.CreateClient(HttpClientName), _kodikTokens), s))
+            .Select(s => Adapters[s.AdapterName].Create(CreateServices(), s))
             .ToList();
 
         _activeMovies = config.Movies.Sources
             .Where(s => GetReadiness(s) == SourceReadiness.Ready)
-            .Select(s => MovieAdapters[s.AdapterName].Create(_httpClients.CreateClient(HttpClientName), s))
+            .Select(s => MovieAdapters[s.AdapterName].Create(CreateServices(), s))
             .ToList();
     }
+
+    private AdapterServices CreateServices() => new(_httpClients.CreateClient(HttpClientName), _kodikTokens);
 }

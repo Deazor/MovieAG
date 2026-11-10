@@ -41,8 +41,22 @@
                 <div class="frame-detail mono">{{ detail }}</div>
               }
             </div>
-          } @else if (unsupported()) {
-            <div class="frame-message"><div class="frame-title">Этот формат потока не поддерживается</div></div>
+          } @else if (unsafeIframe()) {
+            <div class="frame-message">
+              <div class="frame-title">Источник вернул небезопасную ссылку</div>
+              <div class="muted">Разрешены только адреса https.</div>
+            </div>
+          } @else if (iframeUrl(); as url) {
+            <iframe
+              #frame
+              [src]="url"
+              (load)="onFrameLoaded()"
+              title="Плеер источника"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowfullscreen
+              referrerpolicy="strict-origin-when-cross-origin"
+              sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+            ></iframe>
           } @else if (streamUrl()) {
             <video
               #video
@@ -67,6 +81,12 @@
             }
           </div>
         </div>
+
+        @if (manualSeekTo(); as time) {
+          <div class="notice resume" role="status">
+            <span>Этот плеер не перематывается из приложения. Перемотайте на {{ time }} вручную.</span>
+          </div>
+        }
 
         @if (resumedFrom(); as time) {
           <div class="notice resume" role="status">

@@ -78,4 +78,31 @@ public class MoviesConfigParserTests
 
         Assert.Equal(SourceReadiness.Ready, SourceRegistry.GetReadiness(definition));
     }
+
+    [Fact]
+    public void Readiness_AcceptsKodikMovieAdapterWithoutToken()
+    {
+        var definition = new MovieSourceDefinition { Id = "kodik-movies", Type = "balancer", Adapter = KodikMovieSource.AdapterName };
+
+        Assert.Equal(SourceReadiness.Ready, SourceRegistry.GetReadiness(definition));
+    }
+
+    [Fact]
+    public void Parse_AcceptsBalancerMovieSource()
+    {
+        const string yaml = """
+            movies:
+              sources:
+                - id: kodik-movies
+                  adapter: kodik
+                  type: balancer
+                  token: ${KODIK_TOKEN}
+            """;
+
+        var config = SourcesConfigParser.Parse(yaml, _ => null);
+
+        var source = Assert.Single(config.Movies.Sources);
+        Assert.Equal(KodikMovieSource.AdapterName, source.AdapterName);
+        Assert.Null(source.Token);
+    }
 }

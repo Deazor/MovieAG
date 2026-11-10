@@ -12,6 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import type Hls from 'hls.js';
 import { catchError, combineLatest, forkJoin, map, of, switchMap } from 'rxjs';
@@ -19,10 +20,13 @@ import { ApiService } from '../../core/api.service';
 import { Loadable, imdbSeed, loadable, movieMeta } from '../../core/format';
 import { attachHls } from '../../core/hls-stream';
 import { MovieDetails, MovieProgressItem, MovieStream, Playback } from '../../core/models';
-import { formatTime, shouldResume } from '../../core/player-bridge';
+import { formatTime, parsePlayerMessage, seekCommands, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
 
 const POSITION_SAVE_INTERVAL_MS = 10_000;
+const SEEK_CONFIRM_TIMEOUT_MS = 5_000;
+/** Насколько близко к цели должен оказаться плеер в iframe, чтобы считать перемотку состоявшейся. */
+const SEEK_TOLERANCE_SECONDS = 30;
 
 interface PageData {
   details: MovieDetails;
@@ -39,6 +43,7 @@ interface PageData {
 export class Movie implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly sanitizer = inject(DomSanitizer);
 
   /** Параметр адреса: /movies/:imdbId */
   readonly imdbId = input.required<string>();
@@ -48,9 +53,14 @@ export class Movie implements OnDestroy {
   /** Сохранённая позиция, на которую нужно перемотать после загрузки потока. */
   private readonly resumeAt = signal<number | null>(null);
   protected readonly resumedFrom = signal<string | null>(null);
+  /** Плеер в iframe не выполнил команду перемотки: подсказываем время для ручной перемотки. */
+  protected readonly manualSeekTo = signal<string | null>(null);
   private readonly attempt = signal(0);
 
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
+  private readonly frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
+  private seekTimer: ReturnType<typeof setTimeout> | null = null;
+  private seekRequested = false;
   private hls: Hls | null = null;
   private position = 0;
   private duration: number | null = null;
@@ -97,7 +107,14 @@ export class Movie implements OnDestroy {
     return data?.kind === 'hls' ? data.url : null;
   });
 
-  protected readonly unsupported = computed(() => this.playbackData()?.kind === 'iframe');
+  /** Плееры источников (Kodik) встраиваются только по https. */
+  protected readonly iframeUrl = computed<SafeResourceUrl | null>(() => {
+    const data = this.playbackData();
+    if (data?.kind !== 'iframe' || !data.url.startsWith('https://')) return null;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(data.url);
+  });
+
+  protected readonly unsafeIframe = computed(() => this.playbackData()?.kind === 'iframe' && this.iframeUrl() === null);
 
   protected readonly failed = computed(() => this.playback()?.status === 'error' || this.streamError() !== null);
 
@@ -106,8 +123,13 @@ export class Movie implements OnDestroy {
 
   constructor() {
     const onPageHide = () => this.flush();
+    const onMessage = (event: MessageEvent) => this.onPlayerMessage(event);
     window.addEventListener('pagehide', onPageHide);
-    this.destroyRef.onDestroy(() => window.removeEventListener('pagehide', onPageHide));
+    window.addEventListener('message', onMessage);
+    this.destroyRef.onDestroy(() => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('message', onMessage);
+    });
 
     effect((onCleanup) => {
       const url = this.streamUrl();
@@ -126,6 +148,7 @@ export class Movie implements OnDestroy {
 
   ngOnDestroy(): void {
     this.flush();
+    this.clearSeekTimer();
     this.hls?.destroy();
     this.hls = null;
   }
@@ -153,6 +176,7 @@ export class Movie implements OnDestroy {
   protected restart(): void {
     const element = this.video()?.nativeElement;
     if (element) element.currentTime = 0;
+    this.postSeek(0);
     this.position = 0;
     this.resumedFrom.set(null);
   }
@@ -179,6 +203,61 @@ export class Movie implements OnDestroy {
     this.flush();
   }
 
+  protected onFrameLoaded(): void {
+    this.playerReady = true;
+    this.seekRequested = false;
+  }
+
+  /**
+   * Плеер в iframe сообщает время через postMessage. Пока он не дошёл до сохранённого места
+   * (например, ещё идёт реклама), позицию не перезаписываем, чтобы её не потерять.
+   */
+  private onPlayerMessage(event: MessageEvent): void {
+    const frame = this.frame()?.nativeElement;
+    if (!this.playerReady || !frame || event.source !== frame.contentWindow) return;
+
+    const message = parsePlayerMessage(event.data);
+    if (!message) return;
+    if (message.type === 'duration') {
+      this.duration = message.seconds;
+      return;
+    }
+
+    const target = this.resumeAt();
+    if (target !== null) {
+      if (message.seconds < target - SEEK_TOLERANCE_SECONDS) {
+        if (!this.seekRequested) this.requestSeek(target);
+        return;
+      }
+      this.clearSeekTimer();
+      this.resumeAt.set(null);
+      this.manualSeekTo.set(null);
+      this.resumedFrom.set(formatTime(target));
+    }
+
+    this.position = message.seconds;
+    if (Date.now() - this.lastSaveAt >= POSITION_SAVE_INTERVAL_MS) this.flush();
+  }
+
+  private requestSeek(seconds: number): void {
+    this.seekRequested = true;
+    this.postSeek(seconds);
+    this.clearSeekTimer();
+    this.seekTimer = setTimeout(() => this.manualSeekTo.set(formatTime(seconds)), SEEK_CONFIRM_TIMEOUT_MS);
+  }
+
+  private postSeek(seconds: number): void {
+    const frame = this.frame()?.nativeElement;
+    if (!frame?.contentWindow) return;
+    const origin = new URL(frame.src).origin;
+    for (const command of seekCommands(seconds)) frame.contentWindow.postMessage(command, origin);
+  }
+
+  private clearSeekTimer(): void {
+    if (this.seekTimer !== null) clearTimeout(this.seekTimer);
+    this.seekTimer = null;
+  }
+
   /** При hls.js ошибки разбирает он сам, поэтому здесь только встроенный HLS. */
   protected onError(element: HTMLVideoElement): void {
     if (!this.hls) this.streamError.set(`MediaError ${element.error?.code ?? '?'}`);
@@ -188,6 +267,8 @@ export class Movie implements OnDestroy {
     this.playerReady = false;
     this.streamError.set(null);
     this.resumedFrom.set(null);
+    this.manualSeekTo.set(null);
+    this.clearSeekTimer();
     this.position = progress?.positionSeconds ?? 0;
     this.duration = progress?.durationSeconds ?? null;
     this.lastSavedPosition = progress?.positionSeconds ?? null;
@@ -202,6 +283,8 @@ export class Movie implements OnDestroy {
     this.flush();
     this.playerReady = false;
     this.streamError.set(null);
+    this.manualSeekTo.set(null);
+    this.clearSeekTimer();
     this.resumeAt.set(this.resumeAt() ?? (shouldResume(this.position, this.duration) ? this.position : null));
   }
 
