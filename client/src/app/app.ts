@@ -36,14 +36,22 @@ export class App {
 
   protected readonly inMovies = computed(() => /^\/movies(\/|\?|$)/.test(this.url()));
 
+  /**
+   * На своей странице текст добавляется к выбранным жанру, годам и сортировке, а страница сбрасывается.
+   * Пустой запрос в каталоге убирает текст и оставляет фильтры.
+   */
   protected submitSearch(event: Event, query: string): void {
     event.preventDefault();
     const q = query.trim();
+    if (q.length === 1) return;
 
-    if (this.inMovies() && q.length !== 1) {
-      void this.router.navigate(['/movies'], { queryParams: q ? { q } : {} });
-    } else if (q.length >= 2) {
-      void this.router.navigate(['/search'], { queryParams: { q } });
-    }
+    const target = this.inMovies() ? '/movies' : '/search';
+    const samePage = this.url().split('?')[0] === target;
+    if (!q && !samePage && target === '/search') return;
+
+    void this.router.navigate([target], {
+      queryParams: { q: q || null, page: null },
+      queryParamsHandling: samePage ? 'merge' : undefined,
+    });
   }
 }

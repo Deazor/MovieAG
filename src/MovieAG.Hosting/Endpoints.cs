@@ -62,6 +62,7 @@ public static class Endpoints
         api.MapPut("/sources/config", SaveConfig);
 
         api.MapMovies();
+        api.MapBrowse();
     }
 
     private static async Task<IResult> Search(string? q, AggregationService service, CancellationToken ct)

@@ -1,8 +1,10 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { BrowseFilters, BrowseResult, Genre } from './browse';
 import {
   HistoryItem,
+  MovieCard,
   MovieDetails,
   MovieListResult,
   MovieProgressItem,
@@ -80,6 +82,24 @@ export class ApiService {
     return this.http.put<void>(`/api/movies/${imdbId}/progress`, body, { keepalive: true });
   }
 
+  animeGenres(): Observable<Genre[]> {
+    return this.http.get<Genre[]>('/api/genres');
+  }
+
+  /** Аниме из каталога Shikimori по жанру, годам и сортировке; наличие в источниках видно в карточке тайтла. */
+  browseAnime(query: string, filters: BrowseFilters, page: number): Observable<BrowseResult<TitleCard>> {
+    return this.http.get<BrowseResult<TitleCard>>('/api/browse', { params: browseParams(query, filters, page) });
+  }
+
+  movieGenres(): Observable<Genre[]> {
+    return this.http.get<Genre[]>('/api/movies/genres');
+  }
+
+  /** Фильмы из каталога TMDB; без токена TMDB сервер отвечает 503. */
+  browseMovies(query: string, filters: BrowseFilters, page: number): Observable<BrowseResult<MovieCard>> {
+    return this.http.get<BrowseResult<MovieCard>>('/api/movies/browse', { params: browseParams(query, filters, page) });
+  }
+
   sources(): Observable<SourceStatus[]> {
     return this.http.get<SourceStatus[]>('/api/sources');
   }
@@ -99,4 +119,15 @@ export class ApiService {
   saveConfig(yaml: string): Observable<SourceStatus[]> {
     return this.http.put<SourceStatus[]>('/api/sources/config', { yaml });
   }
+}
+
+function browseParams(query: string, filters: BrowseFilters, page: number): HttpParams {
+  let params = new HttpParams();
+  if (query) params = params.set('q', query);
+  if (filters.genre) params = params.set('genre', filters.genre);
+  if (filters.from !== null) params = params.set('from', filters.from);
+  if (filters.to !== null) params = params.set('to', filters.to);
+  if (filters.sort) params = params.set('sort', filters.sort);
+  if (page > 1) params = params.set('page', page);
+  return params;
 }

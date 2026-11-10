@@ -1,78 +1,120 @@
 <main class="page">
-  @let state = result();
-  @if (state === null) {
-    <h1 class="page-title">Поиск</h1>
-    <p class="muted">Введите минимум два символа в строку поиска.</p>
-  } @else {
-    <div class="head">
-      <h1 class="page-title">{{ q() }}</h1>
-      @if (data(); as found) {
-        <p class="muted">
-          {{ countLabel() }} из {{ found.queriedSources.length }} {{ found.queriedSources.length === 1 ? 'источника' : 'источников' }}, одинаковые тайтлы объединены.
-          @if (found.failedSources.length > 0) {
-            <a routerLink="/sources">Не ответили: {{ found.failedSources.join(', ') }}</a>, в результатах могут быть не все озвучки.
+  <div class="head">
+    <h1 class="page-title">{{ heading() }}</h1>
+    @if (browseMode()) {
+      <p class="muted">Каталог Shikimori целиком: есть ли озвучка в ваших источниках, видно в карточке тайтла.</p>
+    } @else if (data(); as found) {
+      <p class="muted">
+        {{ countLabel() }} из {{ found.queriedSources.length }} {{ found.queriedSources.length === 1 ? 'источника' : 'источников' }}, одинаковые тайтлы объединены.
+        @if (found.failedSources.length > 0) {
+          <a routerLink="/sources">Не ответили: {{ found.failedSources.join(', ') }}</a>, в результатах могут быть не все озвучки.
+        }
+      </p>
+    }
+  </div>
+
+  <app-catalog-filters [genres]="genres()" [filters]="filters()" (filtersChange)="onFiltersChange($event)" />
+
+  @if (browseMode()) {
+    @let catalog = browse();
+    @switch (catalog?.status) {
+      @case ('loading') {
+        <p class="state-message">Загружаем каталог…</p>
+      }
+      @case ('error') {
+        <p class="state-message">
+          @if (catalog?.status === 'error' && catalog.httpStatus === 400) {
+            Каталог не принял такие фильтры. Проверьте годы выхода.
+          } @else {
+            Каталог не ответил. Повторите попытку позже.
           }
         </p>
       }
-    </div>
-
-    @switch (state.status) {
-      @case ('loading') {
-        <p class="state-message">Ищем во всех источниках…</p>
-      }
-      @case ('error') {
-        <p class="state-message">Поиск не удался. Проверьте, что сервер запущен, и повторите запрос.</p>
-      }
       @case ('ready') {
-        @if (state.data.items.length > 0) {
-          <div class="filters">
-            <div role="group" aria-label="Тип" class="filter-group">
-              <span class="filter-label">Тип</span>
-              @for (kind of kinds; track kind.id) {
-                <button type="button" class="chip" [attr.aria-pressed]="kindFilter() === kind.id" (click)="kindFilter.set(kind.id)">
-                  {{ kind.label }}
-                </button>
-              }
-            </div>
-            <div role="group" aria-label="Озвучка" class="filter-group">
-              <span class="filter-label">Озвучка</span>
-              <button type="button" class="chip" [attr.aria-pressed]="dubFilter() === null" (click)="dubFilter.set(null)">Любая</button>
-              @for (dub of dubOptions(); track dub) {
-                <button type="button" class="chip" [attr.aria-pressed]="dubFilter() === dub" (click)="dubFilter.set(dub)">{{ dub }}</button>
-              }
-            </div>
-          </div>
-        }
-
-        @if (visible().length === 0) {
-          <p class="state-message">
-            @if (state.data.items.length === 0) {
-              Ничего не нашлось ни в одном источнике.
-            } @else {
-              С такими фильтрами ничего нет. Снимите один из них.
-            }
-          </p>
-        } @else {
-          <div class="results">
-            @for (item of visible(); track item.id) {
-              <a class="card" [routerLink]="['/title', item.id]">
-                <app-poster class="card-poster" [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="item.id" [fontSize]="19" [sun]="false" />
-                <div class="card-body">
-                  <div class="card-name">{{ item.name }}</div>
-                  <div class="small muted">{{ meta(item) }}</div>
-                  <div class="tags">
-                    @for (dub of item.dubs; track dub) {
-                      <span class="tag">{{ dub }}</span>
-                    }
-                    @if (item.hasMoreDubs) {
-                      <span class="tag tag-more">{{ item.dubs.length > 0 ? 'ещё в карточке' : 'озвучки в карточке' }}</span>
+        @if (catalog?.status === 'ready') {
+          @if (catalog.data.items.length === 0) {
+            <p class="state-message">С такими фильтрами ничего нет. Снимите один из них.</p>
+          } @else {
+            <div class="results">
+              @for (item of catalog.data.items; track item.id) {
+                <a class="card" [routerLink]="['/title', item.id]">
+                  <app-poster class="card-poster" [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="item.id" [fontSize]="19" [sun]="false" />
+                  <div class="card-body">
+                    <div class="card-name">{{ item.name }}</div>
+                    <div class="small muted">{{ meta(item) }}</div>
+                    @if (item.originalName && item.originalName !== item.name) {
+                      <div class="small muted">{{ item.originalName }}</div>
                     }
                   </div>
-                  <div class="card-sources mono muted">{{ item.sources.join(', ') }}</div>
-                </div>
-              </a>
-            }
-          </div>
+                </a>
+              }
+            </div>
+          }
+          <app-pager [page]="catalog.data.page" [hasMore]="catalog.data.hasMore" />
+        }
+      }
+    }
+  } @else {
+    @let state = result();
+    @if (state) {
+      @switch (state.status) {
+        @case ('loading') {
+          <p class="state-message">Ищем во всех источниках…</p>
+        }
+        @case ('error') {
+          <p class="state-message">Поиск не удался. Проверьте, что сервер запущен, и повторите запрос.</p>
+        }
+        @case ('ready') {
+          @if (state.data.items.length > 0) {
+            <div class="filters">
+              <div role="group" aria-label="Тип" class="filter-group">
+                <span class="filter-label">Тип</span>
+                @for (kind of kinds; track kind.id) {
+                  <button type="button" class="chip" [attr.aria-pressed]="kindFilter() === kind.id" (click)="kindFilter.set(kind.id)">
+                    {{ kind.label }}
+                  </button>
+                }
+              </div>
+              <div role="group" aria-label="Озвучка" class="filter-group">
+                <span class="filter-label">Озвучка</span>
+                <button type="button" class="chip" [attr.aria-pressed]="dubFilter() === null" (click)="dubFilter.set(null)">Любая</button>
+                @for (dub of dubOptions(); track dub) {
+                  <button type="button" class="chip" [attr.aria-pressed]="dubFilter() === dub" (click)="dubFilter.set(dub)">{{ dub }}</button>
+                }
+              </div>
+            </div>
+          }
+
+          @if (visible().length === 0) {
+            <p class="state-message">
+              @if (state.data.items.length === 0) {
+                Ничего не нашлось ни в одном источнике.
+              } @else {
+                С такими фильтрами ничего нет. Снимите один из них.
+              }
+            </p>
+          } @else {
+            <div class="results">
+              @for (item of visible(); track item.id) {
+                <a class="card" [routerLink]="['/title', item.id]">
+                  <app-poster class="card-poster" [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="item.id" [fontSize]="19" [sun]="false" />
+                  <div class="card-body">
+                    <div class="card-name">{{ item.name }}</div>
+                    <div class="small muted">{{ meta(item) }}</div>
+                    <div class="tags">
+                      @for (dub of item.dubs; track dub) {
+                        <span class="tag">{{ dub }}</span>
+                      }
+                      @if (item.hasMoreDubs) {
+                        <span class="tag tag-more">{{ item.dubs.length > 0 ? 'ещё в карточке' : 'озвучки в карточке' }}</span>
+                      }
+                    </div>
+                    <div class="card-sources mono muted">{{ item.sources.join(', ') }}</div>
+                  </div>
+                </a>
+              }
+            </div>
+          }
         }
       }
     }

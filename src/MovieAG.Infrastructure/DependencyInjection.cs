@@ -54,9 +54,12 @@ public static class DependencyInjection
         services.AddSingleton<ISourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
         services.AddSingleton<IMovieSourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
         services.AddSingleton<SourceHealthService>();
-        services.AddScoped<ICatalog, CachedCatalog>();
+        services.AddScoped<CachedCatalog>();
+        services.AddScoped<ICatalog>(sp => sp.GetRequiredService<CachedCatalog>());
+        services.AddScoped<IAnimeBrowser>(sp => sp.GetRequiredService<CachedCatalog>());
         services.AddScoped<AggregationService>();
         services.AddTransient<IMovieCatalog>(sp => sp.GetRequiredService<TmdbCatalog>());
+        services.AddTransient<IMovieBrowser>(sp => sp.GetRequiredService<TmdbCatalog>());
         services.AddScoped<MovieService>();
 
         services.AddQuartz(quartz =>

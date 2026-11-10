@@ -38,7 +38,7 @@ public sealed class TmdbCatalogTests : IDisposable
             """);
 
         var store = new SourcesConfigStore(_configPath, new ConfigurationBuilder().Build());
-        return new TmdbCatalog(new HttpClient(handler), store, new MemoryCache(new MemoryCacheOptions()));
+        return new TmdbCatalog(new HttpClient(handler), store, new MemoryCache(new MemoryCacheOptions()), new ManualTime());
     }
 
     private static StubHandler Stub() => new(("/3/find/" + Id, Find), ("/3/movie/10378", Details));

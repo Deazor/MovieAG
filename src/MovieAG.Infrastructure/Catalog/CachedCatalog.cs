@@ -9,9 +9,10 @@ namespace MovieAG.Infrastructure.Catalog;
 /// Бережёт лимиты Shikimori: списки держит в памяти, полные карточки — в PostgreSQL.
 /// Если каталог недоступен, отдаёт устаревшую карточку из базы.
 /// </summary>
-public sealed class CachedCatalog(ShikimoriCatalog inner, IMemoryCache memory, AppDbContext db) : ICatalog
+public sealed class CachedCatalog(ShikimoriCatalog inner, IMemoryCache memory, AppDbContext db) : ICatalog, IAnimeBrowser
 {
     private static readonly TimeSpan ListTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan GenresTtl = TimeSpan.FromDays(1);
     private static readonly TimeSpan DetailTtl = TimeSpan.FromDays(7);
 
     public async Task<IReadOnlyList<CatalogTitle>> SearchAsync(string query, CancellationToken ct)
@@ -60,5 +61,26 @@ public sealed class CachedCatalog(ShikimoriCatalog inner, IMemoryCache memory, A
         entity.Apply(fresh, DateTimeOffset.UtcNow);
         await db.SaveChangesAsync(ct);
         return fresh;
+    }
+
+    public async Task<IReadOnlyList<Genre>> GetGenresAsync(CancellationToken ct)
+    {
+        const string key = "catalog:genres";
+        if (memory.TryGetValue(key, out IReadOnlyList<Genre>? cached) && cached is not null) return cached;
+
+        var genres = await inner.GetGenresAsync(ct);
+        memory.Set(key, genres, GenresTtl);
+        return genres;
+    }
+
+    public async Task<BrowsePage<CatalogTitle>> BrowseAsync(BrowseQuery query, CancellationToken ct)
+    {
+        // record с нормализованным текстом служит ключом: одинаковые выборки не ходят в Shikimori повторно.
+        var key = ("catalog:browse", query with { Text = query.Text?.Trim().ToLowerInvariant() });
+        if (memory.TryGetValue(key, out BrowsePage<CatalogTitle>? cached) && cached is not null) return cached;
+
+        var page = await inner.BrowseAsync(query, ct);
+        memory.Set(key, page, ListTtl);
+        return page;
     }
 }
