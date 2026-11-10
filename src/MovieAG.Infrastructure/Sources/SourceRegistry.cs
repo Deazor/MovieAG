@@ -11,7 +11,7 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
     public const string HttpClientName = "sources";
 
     /// <summary>Зависимости, которые адаптеры получают при создании.</summary>
-    private sealed record AdapterServices(HttpClient Http, IKodikTokenProvider KodikTokens);
+    private sealed record AdapterServices(HttpClient Http, IKodikTokenProvider KodikTokens, TimeProvider Time);
 
     // Kodik работает и без токена в конфиге: тогда берётся публичный токен из скрипта плееров.
     private static readonly Dictionary<string, (Func<AdapterServices, SourceDefinition, IAnimeSource> Create, bool NeedsToken)> Adapters = new()
@@ -26,20 +26,22 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
         [MovieLibrarySource.AdapterName] = ((s, def) => new MovieLibrarySource(s.Http, def), false),
         [KodikMovieSource.AdapterName] = ((s, def) => new KodikMovieSource(s.Http, def, s.KodikTokens), false),
         // Открытого токена у Alloha нет: без своего токена источник ждёт его на экране «Источники».
-        [AllohaMovieSource.AdapterName] = ((s, def) => new AllohaMovieSource(s.Http, def), true)
+        [AllohaMovieSource.AdapterName] = ((s, def) => new AllohaMovieSource(s.Http, def, s.Time), true)
     };
 
     private readonly SourcesConfigStore _store;
     private readonly IHttpClientFactory _httpClients;
     private readonly IKodikTokenProvider _kodikTokens;
+    private readonly TimeProvider _time;
     private volatile IReadOnlyList<IAnimeSource> _active = [];
     private volatile IReadOnlyList<IMovieSource> _activeMovies = [];
 
-    public SourceRegistry(SourcesConfigStore store, IHttpClientFactory httpClients, IKodikTokenProvider kodikTokens)
+    public SourceRegistry(SourcesConfigStore store, IHttpClientFactory httpClients, IKodikTokenProvider kodikTokens, TimeProvider time)
     {
         _store = store;
         _httpClients = httpClients;
         _kodikTokens = kodikTokens;
+        _time = time;
         store.Changed += Rebuild;
         Rebuild();
     }
@@ -79,5 +81,5 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
             .ToList();
     }
 
-    private AdapterServices CreateServices() => new(_httpClients.CreateClient(HttpClientName), _kodikTokens);
+    private AdapterServices CreateServices() => new(_httpClients.CreateClient(HttpClientName), _kodikTokens, _time);
 }

@@ -37,8 +37,14 @@ export class Movies {
     return `${n} ${plural(n, 'фильм', 'фильма', 'фильмов')}`;
   }
 
-  protected stoppedAt(item: MovieProgressItem): string | null {
-    return shouldResume(item.positionSeconds, item.durationSeconds) ? formatTime(item.positionSeconds) : null;
+  /**
+   * Время остановки, «Просмотрено» на финальных титрах или «Начали смотреть»,
+   * если плеер не сообщает время (Alloha) и известно только, что фильм открывали.
+   */
+  protected watchState(item: MovieProgressItem): string {
+    if (shouldResume(item.positionSeconds, item.durationSeconds)) return formatTime(item.positionSeconds);
+    // Без длительности shouldResume отвечает только на вопрос «позиция уже не в самом начале?».
+    return shouldResume(item.positionSeconds, null) ? 'Просмотрено' : 'Начали смотреть';
   }
 
   protected progressPercent(item: MovieProgressItem): number {

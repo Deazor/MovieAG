@@ -30,6 +30,9 @@ public sealed class MovieCatalogDefinition
 public sealed class MovieSourceDefinition : SourceDefinition
 {
     public List<LibraryMovie> Items { get; set; } = [];
+
+    /// <summary>Сколько новинок источника показывать на странице «Фильмы»; по умолчанию общий лимит страницы.</summary>
+    public int? Latest { get; set; }
 }
 
 /// <summary>Фильм в библиотеке. Несколько записей с одним imdbId становятся вариантами просмотра.</summary>

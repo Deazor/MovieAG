@@ -125,6 +125,11 @@ public static partial class SourcesConfigParser
 
         foreach (var source in movies.Sources)
         {
+            if (source.Latest is < 1 or > MovieService.MaxCards)
+            {
+                errors.Add($"{source.Id}: latest должен быть от 1 до {MovieService.MaxCards}");
+            }
+
             foreach (var (item, index) in source.Items.Select((m, i) => (m, i + 1)))
             {
                 var label = $"{source.Id}, фильм №{index}";

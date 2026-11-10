@@ -61,6 +61,8 @@ export class Movie implements OnDestroy {
   private readonly frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
   private seekTimer: ReturnType<typeof setTimeout> | null = null;
   private seekRequested = false;
+  /** Вариант, для которого фильм уже отмечен как начатый: iframe может прислать load несколько раз. */
+  private markedStream: MovieStream | null = null;
   private hls: Hls | null = null;
   private position = 0;
   private duration: number | null = null;
@@ -203,9 +205,18 @@ export class Movie implements OnDestroy {
     this.flush();
   }
 
+  /**
+   * Плееры в iframe, которые не сообщают время (Alloha), иначе не попали бы в «Продолжить просмотр»:
+   * поэтому фильм отмечается сразу при загрузке плеера, с уже известной позицией.
+   */
   protected onFrameLoaded(): void {
     this.playerReady = true;
     this.seekRequested = false;
+
+    const stream = this.stream();
+    if (!stream || stream === this.markedStream) return;
+    this.markedStream = stream;
+    this.save(stream, Math.floor(this.position));
   }
 
   /**
@@ -269,6 +280,7 @@ export class Movie implements OnDestroy {
     this.resumedFrom.set(null);
     this.manualSeekTo.set(null);
     this.clearSeekTimer();
+    this.markedStream = null;
     this.position = progress?.positionSeconds ?? 0;
     this.duration = progress?.durationSeconds ?? null;
     this.lastSavedPosition = progress?.positionSeconds ?? null;
@@ -293,6 +305,10 @@ export class Movie implements OnDestroy {
     const seconds = Math.floor(this.position);
     if (!stream || !this.playerReady || seconds === 0 || seconds === this.lastSavedPosition) return;
 
+    this.save(stream, seconds);
+  }
+
+  private save(stream: MovieStream, seconds: number): void {
     this.lastSavedPosition = seconds;
     this.lastSaveAt = Date.now();
     this.api

@@ -105,4 +105,24 @@ public class MoviesConfigParserTests
         Assert.Equal(KodikMovieSource.AdapterName, source.AdapterName);
         Assert.Null(source.Token);
     }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(40, true)]
+    [InlineData(41, false)]
+    public void Parse_ValidatesLatestCount(int latest, bool isValid)
+    {
+        var yaml = $"movies:\n  sources:\n    - id: alloha\n      type: balancer\n      latest: {latest}\n";
+
+        if (isValid)
+        {
+            Assert.Equal(latest, Assert.Single(SourcesConfigParser.Parse(yaml, _ => null).Movies.Sources).Latest);
+        }
+        else
+        {
+            var ex = Assert.Throws<SourcesConfigException>(() => SourcesConfigParser.Parse(yaml, _ => null));
+            Assert.Contains(ex.Errors, e => e.Contains("latest", StringComparison.Ordinal));
+        }
+    }
 }

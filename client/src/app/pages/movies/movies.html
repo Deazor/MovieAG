@@ -22,7 +22,7 @@
             <app-poster class="thumb" [url]="item.posterUrl" [text]="item.name" [seed]="seed(item.imdbId)" [fontSize]="13" [sun]="false" />
             <div class="continue-body">
               <div class="continue-name">{{ item.name }}</div>
-              <div class="muted small">{{ stoppedAt(item) ?? 'Просмотрено' }}</div>
+              <div class="muted small">{{ watchState(item) }}</div>
               <div class="progress" aria-hidden="true">
                 <div class="progress-fill" [style.width.%]="progressPercent(item)"></div>
               </div>

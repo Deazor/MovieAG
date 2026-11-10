@@ -98,7 +98,61 @@ public class AllohaMovieSourceTests
         var title = Assert.Single(await Create(handler).SearchAsync("миля", CancellationToken.None));
 
         Assert.Equal(GreenMile, title.ImdbId);
-        Assert.Contains("name=", handler.Requests[0].RequestUri!.Query);
+        var query = handler.Requests[0].RequestUri!.Query;
+        Assert.Contains("name=%D0%BC%D0%B8%D0%BB%D1%8F", query);
+        Assert.Contains("list=1", query);
+    }
+
+    /// <summary>ManualTime стоит на 2026 году: новинками считаются фильмы 2025–2026.</summary>
+    private const string LatestPage1Json = """
+        {"status":"success","data":[
+          {"name":"Новый","year":2026,"id_imdb":"tt1000001","iframe":"https://player.test/1"},
+          {"name":"Старый, но недавно добавлен","year":1999,"id_imdb":"tt0120689","iframe":"https://player.test/2"},
+          {"name":"Прошлогодний","year":2025,"id_imdb":"tt1000002","iframe":"https://player.test/3"},
+          {"name":"Сериал","year":2026,"id_imdb":"tt1000009","seasons":{"1":{}}}],"next_page":2}
+        """;
+
+    private const string LatestPage2Json = """
+        {"status":"success","data":[
+          {"name":"Новый","year":2026,"id_imdb":"tt1000001","iframe":"https://player.test/1"},
+          {"name":"Ещё новый","year":2026,"id_imdb":"tt1000003","iframe":"https://player.test/4"}]}
+        """;
+
+    private const string EmptyListJson = """{"status":"success","data":[]}""";
+
+    [Fact]
+    public async Task Latest_ListsRecentMoviesByDateAcrossPages()
+    {
+        var handler = new StubHandler(("page=1", LatestPage1Json), ("page=2", LatestPage2Json), ("page=3", EmptyListJson));
+
+        var latest = await Create(handler).GetLatestAsync(24, CancellationToken.None);
+
+        Assert.Equal(["tt1000001", "tt1000002", "tt1000003"], latest.Select(m => m.ImdbId));
+        Assert.Equal(3, handler.Requests.Count);
+
+        var query = handler.Requests[0].RequestUri!.Query;
+        Assert.Contains("list=movie", query);
+        Assert.Contains("order=date", query);
+    }
+
+    [Fact]
+    public async Task Latest_StopsWhenConfiguredCountIsReached()
+    {
+        var handler = new StubHandler(("page=1", LatestPage1Json), ("page=2", LatestPage2Json));
+
+        var latest = await Create(handler, latest: 1).GetLatestAsync(24, CancellationToken.None);
+
+        Assert.Equal("tt1000001", Assert.Single(latest).ImdbId);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Latest_StopsOnEmptyPage()
+    {
+        var handler = new StubHandler(("page=1", EmptyListJson));
+
+        Assert.Empty(await Create(handler).GetLatestAsync(24, CancellationToken.None));
+        Assert.Single(handler.Requests);
     }
 
     [Fact]
@@ -131,6 +185,6 @@ public class AllohaMovieSourceTests
         Assert.Equal(SourceReadiness.Ready, SourceRegistry.GetReadiness(withToken));
     }
 
-    private static AllohaMovieSource Create(HttpMessageHandler handler) =>
-        new(new HttpClient(handler), new MovieSourceDefinition { Id = "alloha", Type = "balancer", Url = "https://alloha.test", Token = "secret" });
+    private static AllohaMovieSource Create(HttpMessageHandler handler, int? latest = null) =>
+        new(new HttpClient(handler), new MovieSourceDefinition { Id = "alloha", Type = "balancer", Url = "https://alloha.test", Token = "secret", Latest = latest }, new ManualTime());
 }

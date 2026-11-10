@@ -9,13 +9,19 @@ namespace MovieAG.Infrastructure.Sources;
 /// <summary>
 /// Фильмы из балансера Alloha (api.alloha.tv), воспроизведение через iframe. Нужен собственный токен из кабинета Alloha.
 /// Ищет по IMDb ID и по названию, у фильма отдельный вариант просмотра на каждую озвучку.
-/// Списка новинок в API нет, сериалы на странице фильмов пропускаются.
+/// Отдаёт новинки текущего и прошлого года; сериалы на странице фильмов пропускаются.
 /// </summary>
-public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition definition) : IMovieSource
+public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition definition, TimeProvider time) : IMovieSource
 {
     public const string AdapterName = "alloha";
     public const string DefaultStreamId = "default";
     private const string DefaultUrl = "https://api.alloha.tv";
+
+    /// <summary>Сколько лет назад вышедший фильм ещё считается новинкой: 1 — этот и прошлый год.</summary>
+    private const int RecentYears = 1;
+
+    /// <summary>Верхняя граница страниц за один показ новинок, чтобы уложиться в таймаут источника.</summary>
+    private const int MaxLatestPages = 3;
 
     /// <summary>«Зелёная миля»: проверка связи лишь убеждается, что Alloha принимает токен.</summary>
     private const string PingImdbId = "tt0120689";
@@ -26,9 +32,10 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
 
     public async Task<IReadOnlyList<MovieTitle>> SearchAsync(string query, CancellationToken ct)
     {
+        // Без list=1 Alloha ищет по названию одну запись с точным совпадением; со списком находит и по части названия.
         var items = ImdbId.IsValid(query)
-            ? await RequestAsync(("imdb", query), ct)
-            : await RequestAsync(("name", query), ct);
+            ? await RequestAsync(ct, ("imdb", query))
+            : await RequestAsync(ct, ("name", query), ("list", "1"));
 
         return items
             .Where(IsMovie)
@@ -37,8 +44,32 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
             .ToList();
     }
 
-    public Task<IReadOnlyList<MovieTitle>> GetLatestAsync(int limit, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<MovieTitle>>([]);
+    /// <summary>
+    /// Alloha сортирует по дате добавления к себе, поэтому в начале списка бывают и старые фильмы.
+    /// Новыми считаются фильмы этого и прошлого года; страницы листаются, пока их не наберётся нужное число.
+    /// </summary>
+    public async Task<IReadOnlyList<MovieTitle>> GetLatestAsync(int limit, CancellationToken ct)
+    {
+        var count = definition.Latest ?? limit;
+        var minYear = time.GetUtcNow().Year - RecentYears;
+        var found = new List<MovieTitle>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var page = 1; page <= MaxLatestPages && found.Count < count; page++)
+        {
+            var items = await RequestAsync(ct,
+                ("list", "movie"),
+                ("order", "date"),
+                ("page", page.ToString(CultureInfo.InvariantCulture)));
+            if (items.Count == 0) break;
+
+            found.AddRange(items
+                .Where(i => IsMovie(i) && i.Year >= minYear && seen.Add(i.IdImdb!))
+                .Select(ToTitle));
+        }
+
+        return found.Take(count).ToList();
+    }
 
     public async Task<SourceMovie?> FindAsync(string imdbId, CancellationToken ct)
     {
@@ -60,13 +91,13 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         return string.IsNullOrEmpty(link) ? null : new Playback(PlaybackKind.Iframe, NormalizeLink(link), []);
     }
 
-    public Task PingAsync(CancellationToken ct) => RequestAsync(("imdb", PingImdbId), ct);
+    public Task PingAsync(CancellationToken ct) => RequestAsync(ct, ("imdb", PingImdbId));
 
     private async Task<AllohaItem?> FindMovieAsync(string imdbId, CancellationToken ct)
     {
         if (!ImdbId.IsValid(imdbId)) return null;
 
-        var items = await RequestAsync(("imdb", imdbId), ct);
+        var items = await RequestAsync(ct, ("imdb", imdbId));
         return items.FirstOrDefault(i => IsMovie(i) && i.IdImdb == imdbId);
     }
 
@@ -74,14 +105,17 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
     /// Alloha всегда отвечает 200 и text/html, а ошибку передаёт в status/error_info.
     /// «Не найдено» превращается в пустой список, отказ в токене — в исключение.
     /// </summary>
-    private async Task<IReadOnlyList<AllohaItem>> RequestAsync((string Key, string Value) filter, CancellationToken ct)
+    private async Task<IReadOnlyList<AllohaItem>> RequestAsync(CancellationToken ct, params (string Key, string Value)[] parameters)
     {
         if (string.IsNullOrEmpty(definition.Token))
         {
             throw new InvalidOperationException($"Для источника {Id} не задан токен Alloha");
         }
 
-        var url = $"{_baseUrl}/?token={Uri.EscapeDataString(definition.Token)}&{filter.Key}={Uri.EscapeDataString(filter.Value)}";
+        var query = string.Join('&', parameters
+            .Prepend(("token", definition.Token))
+            .Select(p => $"{p.Item1}={Uri.EscapeDataString(p.Item2)}"));
+        var url = $"{_baseUrl}/?{query}";
         using var response = await http.GetAsync(url, ct);
 
         // В сообщения об ошибках не попадает URL, поэтому токен не утечёт в лог.

@@ -8,7 +8,8 @@ public sealed class MovieService(
     IMovieCatalog catalog,
     ILogger<MovieService> logger)
 {
-    private const int MaxCards = 40;
+    /// <summary>Сколько карточек фильмов отдаётся за один запрос списка.</summary>
+    public const int MaxCards = 40;
 
     public Task<MovieListResult> SearchAsync(string query, CancellationToken ct) =>
         ListAsync((source, token) => source.SearchAsync(query, token), ct);
