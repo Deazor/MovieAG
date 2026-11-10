@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MovieAG.Core;
 using MovieAG.Infrastructure.Catalog;
 using MovieAG.Infrastructure.Configuration;
@@ -46,6 +47,8 @@ public static class DependencyInjection
         services.AddHttpClient<ShikimoriCatalog>(ConfigureClient);
         services.AddHttpClient<TmdbCatalog>(ConfigureClient);
 
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IKodikTokenProvider, KodikPublicTokenProvider>();
         services.AddSingleton(_ => new SourcesConfigStore(sourcesConfigPath, configuration));
         services.AddSingleton<SourceRegistry>();
         services.AddSingleton<ISourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using MovieAG.Core;
@@ -6,20 +7,34 @@ using MovieAG.Infrastructure.Configuration;
 
 namespace MovieAG.Infrastructure.Sources;
 
-/// <summary>Балансер Kodik: одна запись на озвучку, воспроизведение через iframe.</summary>
-public sealed class KodikSource(HttpClient http, SourceDefinition definition) : IAnimeSource
+/// <summary>
+/// Балансер Kodik, воспроизведение через iframe.
+/// С собственным токеном доступен весь API: поиск, новинки, одна запись на озвучку.
+/// Без токена берётся публичный из <see cref="IKodikTokenProvider"/>, а он открывает только /get-player:
+/// тайтлы приходят из каталога, Kodik даёт на них один плеер, а озвучка выбирается внутри плеера.
+/// </summary>
+public sealed class KodikSource(HttpClient http, SourceDefinition definition, IKodikTokenProvider? publicTokens = null) : IAnimeSource
 {
     public const string AdapterName = "kodik";
+    public const string PlayerDubId = "player";
     private const string DefaultUrl = "https://kodik-api.com";
     private const string AnimeTypes = "anime,anime-serial";
     private const int MaxResults = 100;
+
+    /// <summary>Любой существующий тайтл Shikimori: проверка связи лишь убеждается, что токен принят.</summary>
+    private const int PingShikimoriId = 1;
 
     private readonly string _baseUrl = (definition.Url ?? DefaultUrl).TrimEnd('/');
 
     public string Id => definition.Id;
 
+    private bool UsesPublicToken => string.IsNullOrEmpty(definition.Token);
+
     public async Task<IReadOnlyList<SourceTitle>> SearchAsync(string query, CancellationToken ct)
     {
+        // Публичный токен не даёт /search: тайтл найдётся через каталог, плеер — в GetVariantsAsync.
+        if (UsesPublicToken) return [];
+
         var response = await PostAsync("/search", ct,
             ("title", query),
             ("types", AnimeTypes),
@@ -30,6 +45,8 @@ public sealed class KodikSource(HttpClient http, SourceDefinition definition) : 
 
     public async Task<IReadOnlyList<SourceTitle>> GetLatestAsync(int limit, CancellationToken ct)
     {
+        if (UsesPublicToken) return [];
+
         var response = await PostAsync("/list", ct,
             ("types", AnimeTypes),
             ("sort", "updated_at"),
@@ -41,6 +58,14 @@ public sealed class KodikSource(HttpClient http, SourceDefinition definition) : 
 
     public async Task<IReadOnlyList<DubVariant>> GetVariantsAsync(CatalogTitle title, CancellationToken ct)
     {
+        if (UsesPublicToken)
+        {
+            var player = await GetPlayerAsync(title.Id, ct);
+            return player is null
+                ? []
+                : [new DubVariant(Id, PlayerDubId, $"{player.Translation ?? "Kodik"} и другие (выбор в плеере)", DubKind.Voice, ListPlayerEpisodes(title, player.Link!))];
+        }
+
         var results = await GetByShikimoriIdAsync(title.Id, ct);
         return results
             .Where(r => r.Translation is not null)
@@ -52,6 +77,13 @@ public sealed class KodikSource(HttpClient http, SourceDefinition definition) : 
 
     public async Task<Playback?> GetPlaybackAsync(CatalogTitle title, string dubId, int episode, CancellationToken ct)
     {
+        if (UsesPublicToken)
+        {
+            if (dubId != PlayerDubId) return null;
+            var player = await GetPlayerAsync(title.Id, ct);
+            return player is null ? null : new Playback(PlaybackKind.Iframe, WithEpisode(NormalizeLink(player.Link!), episode), []);
+        }
+
         var results = await GetByShikimoriIdAsync(title.Id, ct);
         var result = results.FirstOrDefault(r => r.Translation?.Id.ToString(CultureInfo.InvariantCulture) == dubId);
         if (result is null) return null;
@@ -60,7 +92,34 @@ public sealed class KodikSource(HttpClient http, SourceDefinition definition) : 
         return link is null ? null : new Playback(PlaybackKind.Iframe, NormalizeLink(link), []);
     }
 
-    public Task PingAsync(CancellationToken ct) => PostAsync("/list", ct, ("limit", "1"), ("types", AnimeTypes));
+    public Task PingAsync(CancellationToken ct) => UsesPublicToken
+        ? GetPlayerAsync(PingShikimoriId, ct)
+        : PostAsync("/list", ct, ("limit", "1"), ("types", AnimeTypes));
+
+    /// <summary>Единственный запрос, который принимает публичный токен. Null, если плеера нет или он закрыт.</summary>
+    private async Task<KodikPlayerResponse?> GetPlayerAsync(int shikimoriId, CancellationToken ct)
+    {
+        var player = await RequestAsync<KodikPlayerResponse>(HttpMethod.Get, "/get-player", ct,
+            ("shikimoriID", shikimoriId.ToString(CultureInfo.InvariantCulture)));
+        return player is { Found: true, Allowed: 1, Link.Length: > 0 } ? player : null;
+    }
+
+    /// <summary>
+    /// /get-player не перечисляет серии, поэтому их число берётся из каталога.
+    /// Остальные серии и сезоны всё равно доступны в селекторе плеера.
+    /// </summary>
+    private static IReadOnlyList<int> ListPlayerEpisodes(CatalogTitle title, string link)
+    {
+        if (IsMovieLink(link)) return [1];
+        var count = title.EpisodesTotal is > 0 ? title.EpisodesTotal.Value : 1;
+        return Enumerable.Range(1, count).ToList();
+    }
+
+    private static string WithEpisode(string link, int episode) => IsMovieLink(link)
+        ? link
+        : $"{link}{(link.Contains('?') ? '&' : '?')}episode={episode.ToString(CultureInfo.InvariantCulture)}";
+
+    private static bool IsMovieLink(string link) => link.Contains("/video/", StringComparison.Ordinal);
 
     private async Task<List<KodikResult>> GetByShikimoriIdAsync(int shikimoriId, CancellationToken ct)
     {
@@ -73,23 +132,80 @@ public sealed class KodikSource(HttpClient http, SourceDefinition definition) : 
             .ToList();
     }
 
-    private async Task<KodikResponse> PostAsync(string path, CancellationToken ct, params (string Key, string Value)[] parameters)
+    private Task<KodikResponse> PostAsync(string path, CancellationToken ct, params (string Key, string Value)[] parameters) =>
+        RequestAsync<KodikResponse>(HttpMethod.Post, path, ct, parameters);
+
+    private async Task<T> RequestAsync<T>(HttpMethod method, string path, CancellationToken ct, params (string Key, string Value)[] parameters)
+        where T : KodikReply
     {
-        var query = string.Join('&', parameters
-            .Prepend(("token", definition.Token ?? ""))
-            .Select(p => $"{p.Item1}={Uri.EscapeDataString(p.Item2)}"));
-
-        using var response = await http.PostAsync($"{_baseUrl}{path}?{query}", content: null, ct);
-
-        // В сообщение об ошибке не попадает URL, поэтому токен не утечёт в лог.
-        if (!response.IsSuccessStatusCode)
+        if (!UsesPublicToken)
         {
-            throw new HttpRequestException($"Kodik вернул {(int)response.StatusCode}", null, response.StatusCode);
+            return (await SendAsync<T>(method, definition.Token!, path, parameters, ct)).GetResponse();
         }
 
-        return await response.Content.ReadFromJsonAsync<KodikResponse>(SourceJson.Options, ct)
-            ?? throw new InvalidOperationException("Пустой ответ Kodik");
+        if (publicTokens is null)
+        {
+            throw new InvalidOperationException($"Для источника {Id} не задан токен Kodik");
+        }
+
+        var token = await publicTokens.GetTokenAsync(ct);
+        var attempt = await SendAsync<T>(method, token, path, parameters, ct);
+
+        if (attempt.TokenRejected)
+        {
+            // Kodik время от времени меняет публичный токен: берём свежий из скрипта и повторяем один раз.
+            publicTokens.Invalidate(token);
+            attempt = await SendAsync<T>(method, await publicTokens.GetTokenAsync(ct), path, parameters, ct);
+        }
+
+        return attempt.GetResponse();
     }
+
+    private async Task<KodikAttempt<T>> SendAsync<T>(
+        HttpMethod method, string token, string path, (string Key, string Value)[] parameters, CancellationToken ct)
+        where T : KodikReply
+    {
+        var query = string.Join('&', parameters
+            .Prepend(("token", token))
+            .Select(p => $"{p.Item1}={Uri.EscapeDataString(p.Item2)}"));
+
+        using var request = new HttpRequestMessage(method, $"{_baseUrl}{path}?{query}");
+        using var response = await http.SendAsync(request, ct);
+        var body = await ReadResponseAsync<T>(response, ct);
+
+        if (response.IsSuccessStatusCode && body?.Error is null)
+        {
+            return new KodikAttempt<T>(body, null, false);
+        }
+
+        // В сообщение об ошибке не попадает URL, поэтому токен не утечёт в лог.
+        var message = $"Kodik вернул {(int)response.StatusCode}" + (body?.Error is { } error ? $": {error}" : "");
+        return new KodikAttempt<T>(
+            null,
+            new HttpRequestException(message, null, response.StatusCode),
+            IsTokenRejected(response.StatusCode, body?.Error));
+    }
+
+    /// <summary>Тело ошибки бывает не JSON (например, страница прокси), тогда оно игнорируется.</summary>
+    private static async Task<T?> ReadResponseAsync<T>(HttpResponseMessage response, CancellationToken ct)
+        where T : KodikReply
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(SourceJson.Options, ct);
+        }
+        catch (JsonException) when (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>На неверный токен Kodik отвечает либо статусом 401/403, либо полем error с упоминанием токена.</summary>
+    private static bool IsTokenRejected(HttpStatusCode status, string? error) =>
+        status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        || (error is not null
+            && (error.Contains("токен", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("token", StringComparison.OrdinalIgnoreCase)));
 
     private IReadOnlyList<SourceTitle> ToSourceTitles(List<KodikResult>? results)
     {
@@ -184,7 +300,23 @@ public sealed class KodikSource(HttpClient http, SourceDefinition definition) : 
 
     private static string NormalizeLink(string link) => link.StartsWith("//", StringComparison.Ordinal) ? "https:" + link : link;
 
-    private sealed record KodikResponse(List<KodikResult>? Results);
+    /// <summary>Любой ответ Kodik может вместо данных содержать поле error.</summary>
+    private abstract record KodikReply
+    {
+        public string? Error { get; init; }
+    }
+
+    private sealed record KodikResponse(List<KodikResult>? Results) : KodikReply;
+
+    private sealed record KodikPlayerResponse(bool Found, int? Allowed, string? Translation, string? Link) : KodikReply;
+
+    /// <summary>Итог одного запроса: ответ либо ошибка, и отдельно — отверг ли Kodik токен.</summary>
+    private sealed record KodikAttempt<T>(T? Response, HttpRequestException? Error, bool TokenRejected)
+        where T : KodikReply
+    {
+        public T GetResponse() =>
+            Error is not null ? throw Error : Response ?? throw new InvalidOperationException("Пустой ответ Kodik");
+    }
 
     private sealed record KodikResult
     {
