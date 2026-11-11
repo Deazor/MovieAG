@@ -1,5 +1,5 @@
 import { Observable, catchError, map, of, startWith } from 'rxjs';
-import { SourceStatus } from './models';
+import { Rating, SourceStatus } from './models';
 
 export type Loadable<T> =
   | { status: 'loading' }
@@ -54,6 +54,16 @@ export function titleMeta(item: { kind: string | null; year: number | null; epis
 /** Число для цвета типографического постера: tt1254207 → 1254207. */
 export function imdbSeed(imdbId: string): number {
   return Number(imdbId.slice(2)) || 0;
+}
+
+/** 8.66 → «8,66», 7.9 → «7,9», 8 → «8,0». */
+export function formatRating(value: number): string {
+  return value.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+}
+
+/** У аниме одна оценка — Shikimori. */
+export function animeRatings(score: number | null | undefined): Rating[] {
+  return score ? [{ source: 'Shikimori', value: score }] : [];
 }
 
 export function movieMeta(movie: { year: number | null; runtimeMinutes: number | null; genres: string[] }): string {

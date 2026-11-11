@@ -67,6 +67,7 @@
               <a class="card" [routerLink]="['/movies', item.imdbId]">
                 <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="seed(item.imdbId)" />
                 <div class="card-name">{{ item.name }}</div>
+                <app-ratings [ratings]="item.ratings" />
                 @if (item.year) {
                   <div class="muted small">{{ item.year }}</div>
                 }
@@ -99,6 +100,7 @@
                 <a class="card" [routerLink]="['/movies', item.imdbId]">
                   <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="seed(item.imdbId)" />
                   <div class="card-name">{{ item.name }}</div>
+                <app-ratings [ratings]="item.ratings" />
                   <div class="muted small">
                     @if (item.year) { {{ item.year }} · }<span class="mono">{{ item.imdbId }}</span>
                   </div>

@@ -27,6 +27,9 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
     /// <summary>Сколько запросов external_ids идёт параллельно: TMDB ограничивает частоту запросов.</summary>
     private const int ExternalIdsConcurrency = 6;
 
+    /// <summary>С меньшим числом голосов оценка TMDB слишком случайна, чтобы её показывать.</summary>
+    private const int MinVotesToShow = 10;
+
     private static readonly TimeSpan CacheTtl = TimeSpan.FromDays(1);
     private static readonly TimeSpan BrowseTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan ExternalIdsTtl = TimeSpan.FromDays(7);
@@ -182,7 +185,8 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
         OriginalName = movie.OriginalTitle,
         Year = ParseYear(movie.ReleaseDate),
         Description = string.IsNullOrWhiteSpace(movie.Overview) ? null : movie.Overview,
-        PosterUrl = string.IsNullOrEmpty(movie.PosterPath) ? null : Settings.ImagesUrl.TrimEnd('/') + movie.PosterPath
+        PosterUrl = string.IsNullOrEmpty(movie.PosterPath) ? null : Settings.ImagesUrl.TrimEnd('/') + movie.PosterPath,
+        Ratings = TmdbRating(movie.VoteAverage, movie.VoteCount)
     };
 
     private void RequireToken()
@@ -255,8 +259,12 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
         RuntimeMinutes = details.Runtime is > 0 ? details.Runtime : null,
         Description = string.IsNullOrWhiteSpace(details.Overview) ? null : details.Overview,
         PosterUrl = string.IsNullOrEmpty(details.PosterPath) ? null : Settings.ImagesUrl.TrimEnd('/') + details.PosterPath,
-        Genres = details.Genres?.Select(g => g.Name).OfType<string>().ToList() ?? []
+        Genres = details.Genres?.Select(g => g.Name).OfType<string>().ToList() ?? [],
+        Ratings = TmdbRating(details.VoteAverage, details.VoteCount)
     };
+
+    private static IReadOnlyList<Rating> TmdbRating(double? average, int? votes) =>
+        votes >= MinVotesToShow && Rating.Create(Rating.Tmdb, average) is { } rating ? [rating] : [];
 
     private sealed record FindResponse
     {
@@ -274,6 +282,8 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
         public string? ReleaseDate { get; init; }
         public int? Runtime { get; init; }
         public List<GenreName>? Genres { get; init; }
+        public double? VoteAverage { get; init; }
+        public int? VoteCount { get; init; }
     }
 
     private sealed record GenreName(string? Name);
@@ -296,6 +306,7 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
         public List<int>? GenreIds { get; init; }
         public double? Popularity { get; init; }
         public double? VoteAverage { get; init; }
+        public int? VoteCount { get; init; }
     }
 
     private sealed record ExternalIds(string? ImdbId);

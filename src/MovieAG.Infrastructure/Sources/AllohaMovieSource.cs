@@ -183,6 +183,9 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         PosterUrl = item.Poster,
         Genres = (item.Genre ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList(),
+        Ratings = new[] { Rating.Create(Rating.Imdb, item.RatingImdb), Rating.Create(Rating.Kinopoisk, item.RatingKp) }
+            .OfType<Rating>()
             .ToList()
     };
 
@@ -209,6 +212,8 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         public string? Iframe { get; init; }
         public Dictionary<string, AllohaTranslation>? TranslationIframe { get; init; }
         public JsonElement? Seasons { get; init; }
+        public double? RatingImdb { get; init; }
+        public double? RatingKp { get; init; }
     }
 
     private sealed record AllohaTranslation(string? Name, string? Iframe, string? Quality);

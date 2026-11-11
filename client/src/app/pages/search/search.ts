@@ -4,11 +4,12 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, distinctUntilChanged, map, of, switchMap, tap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { BrowseFilters, BrowseResult, Genre, filtersToParams, hasFilters, parseFilters, parsePage } from '../../core/browse';
-import { Loadable, loadable, plural, titleMeta } from '../../core/format';
+import { Loadable, animeRatings, loadable, plural, titleMeta } from '../../core/format';
 import { SearchResult, TitleCard } from '../../core/models';
 import { CatalogFilters } from '../../shared/catalog-filters';
 import { Pager } from '../../shared/pager';
 import { Poster } from '../../shared/poster';
+import { Ratings } from '../../shared/ratings';
 
 type KindFilter = 'all' | 'tv' | 'movie';
 
@@ -20,7 +21,7 @@ const MIN_QUERY_LENGTH = 2;
  */
 @Component({
   selector: 'app-search',
-  imports: [RouterLink, Poster, CatalogFilters, Pager],
+  imports: [RouterLink, Poster, CatalogFilters, Pager, Ratings],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './search.html',
   styleUrl: './search.scss',
@@ -124,6 +125,7 @@ export class Search {
   });
 
   protected readonly meta = titleMeta;
+  protected readonly ratings = animeRatings;
 
   protected onFiltersChange(change: Partial<BrowseFilters>): void {
     void this.router.navigate([], { relativeTo: this.route, queryParams: filtersToParams(change), queryParamsHandling: 'merge' });

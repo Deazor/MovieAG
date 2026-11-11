@@ -161,4 +161,6 @@ internal sealed record KodikMaterialData(
     string? PosterUrl,
     string? Description,
     List<string>? Genres,
-    int? Duration);
+    int? Duration,
+    double? ImdbRating = null,
+    double? KinopoiskRating = null);

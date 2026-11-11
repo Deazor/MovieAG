@@ -71,7 +71,8 @@ public sealed class MovieService(
             title.OriginalName,
             title.Year,
             title.PosterUrl,
-            hits.Select(h => h.SourceId).Distinct().ToList());
+            hits.Select(h => h.SourceId).Distinct().ToList(),
+            Rating.Merge([title.Ratings, .. hits.Skip(1).Select(h => h.Title.Ratings)]));
     }
 
     private async Task<MovieTitle?> SafeCatalogAsync(string imdbId, CancellationToken ct)

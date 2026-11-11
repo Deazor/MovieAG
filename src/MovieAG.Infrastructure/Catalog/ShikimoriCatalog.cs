@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using MovieAG.Core;
 using MovieAG.Infrastructure.Configuration;
@@ -12,6 +13,9 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
 {
     private const int SearchLimit = 20;
 
+    /// <summary>Сколько тайтлов GraphQL Shikimori отдаёт за один запрос.</summary>
+    private const int GraphQlLimit = 50;
+
     /// <summary>Размер страницы выборки по жанрам; Shikimori отдаёт до 50.</summary>
     public const int BrowsePageSize = 24;
 
@@ -19,6 +23,9 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
     private const int EarliestYear = 1917;
 
     private static readonly CultureInfo RussianCulture = CultureInfo.GetCultureInfo("ru-RU");
+
+    /// <summary>GraphQL Shikimori, в отличие от REST, называет поля в camelCase: originalUrl.</summary>
+    private static readonly JsonSerializerOptions GraphQlJson = new(JsonSerializerDefaults.Web);
 
     private string BaseUrl => config.Current.Catalog.Url.TrimEnd('/');
 
@@ -42,7 +49,10 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
         response.EnsureSuccessStatusCode();
 
         var anime = await response.Content.ReadFromJsonAsync<Anime>(SourceJson.Options, ct);
-        return anime is null ? null : ToTitle(anime);
+        if (anime is null) return null;
+
+        var titles = await WithPostersAsync([ToTitle(anime)], ct);
+        return titles[0];
     }
 
     /// <summary>Жанры, темы и аудитории аниме: Shikimori фильтрует по ним одним параметром genre.</summary>
@@ -109,7 +119,55 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
         using var response = await http.GetAsync(BaseUrl + path, ct);
         response.EnsureSuccessStatusCode();
         var items = await response.Content.ReadFromJsonAsync<List<Anime>>(SourceJson.Options, ct) ?? [];
-        return items.Select(ToTitle).ToList();
+        return await WithPostersAsync(items.Select(ToTitle).ToList(), ct);
+    }
+
+    /// <summary>
+    /// REST API Shikimori у новых тайтлов отдаёт заглушку missing_original.jpg, хотя постер на сайте есть.
+    /// GraphQL API отдаёт настоящий постер, поэтому недостающие добираются одним запросом на страницу.
+    /// Постер не обязателен: при сбое GraphQL карточки остаются с типографической обложкой.
+    /// </summary>
+    private async Task<IReadOnlyList<CatalogTitle>> WithPostersAsync(IReadOnlyList<CatalogTitle> titles, CancellationToken ct)
+    {
+        var missing = titles.Where(t => t.PosterUrl is null).Select(t => t.Id).Distinct().ToList();
+        if (missing.Count == 0) return titles;
+
+        var posters = new Dictionary<int, string>();
+        try
+        {
+            foreach (var chunk in missing.Chunk(GraphQlLimit))
+            {
+                foreach (var (id, url) in await GetPostersAsync(chunk, ct)) posters[id] = url;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException && !ct.IsCancellationRequested)
+        {
+            return titles;
+        }
+
+        return titles
+            .Select(t => t.PosterUrl is null && posters.TryGetValue(t.Id, out var url) ? t with { PosterUrl = url } : t)
+            .ToList();
+    }
+
+    private async Task<IEnumerable<(int Id, string Url)>> GetPostersAsync(int[] ids, CancellationToken ct)
+    {
+        // ID — целые числа, поэтому подстановка в текст запроса безопасна.
+        var idList = string.Join(',', ids.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+        var query = $$"""{ animes(ids: "{{idList}}", limit: {{ids.Length.ToString(CultureInfo.InvariantCulture)}}) { id poster { originalUrl mainUrl } } }""";
+
+        using var response = await http.PostAsJsonAsync($"{BaseUrl}/api/graphql", new { query }, ct);
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<GraphQlResponse>(GraphQlJson, ct);
+
+        var posters = new List<(int Id, string Url)>();
+        foreach (var anime in body?.Data?.Animes ?? [])
+        {
+            if (!int.TryParse(anime.Id, CultureInfo.InvariantCulture, out var id)) continue;
+            if (ToPosterUrl(anime.Poster?.OriginalUrl ?? anime.Poster?.MainUrl) is { } url) posters.Add((id, url));
+        }
+
+        return posters;
     }
 
     private CatalogTitle ToTitle(Anime anime) => new()
@@ -125,7 +183,9 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
         Description = CleanDescription(anime.Description),
         PosterUrl = ToPosterUrl(anime.Image?.Original),
         Studio = anime.Studios?.FirstOrDefault()?.Name,
-        Genres = anime.Genres?.Select(g => g.Russian).OfType<string>().ToList() ?? []
+        Genres = anime.Genres?.Select(g => g.Russian).OfType<string>().ToList() ?? [],
+        // «0.0» у Shikimori означает, что оценок ещё нет.
+        Score = anime.Score is > 0 ? Math.Round(anime.Score.Value, 2) : null
     };
 
     private string? ToPosterUrl(string? path)
@@ -154,6 +214,7 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
         public string? Status { get; init; }
         public int? Episodes { get; init; }
         public int? EpisodesAired { get; init; }
+        public double? Score { get; init; }
         public string? AiredOn { get; init; }
         public string? Description { get; init; }
         public AnimeImage? Image { get; init; }
@@ -168,4 +229,12 @@ public sealed partial class ShikimoriCatalog(HttpClient http, SourcesConfigStore
     private sealed record GenreRef(string? Russian);
 
     private sealed record GenreItem(int Id, string? Name, string? Russian, string? EntryType);
+
+    private sealed record GraphQlResponse(GraphQlData? Data);
+
+    private sealed record GraphQlData(List<GraphQlAnime>? Animes);
+
+    private sealed record GraphQlAnime(string? Id, GraphQlPoster? Poster);
+
+    private sealed record GraphQlPoster(string? OriginalUrl, string? MainUrl);
 }

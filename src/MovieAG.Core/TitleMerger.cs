@@ -63,6 +63,7 @@ public static class TitleMerger
         {
             Id = id,
             Name = meta?.Name ?? first.Name,
+            Score = meta?.Score,
             OriginalName = meta?.OriginalName ?? first.OriginalName,
             Kind = meta?.Kind ?? first.Kind,
             Year = meta?.Year ?? first.Year,

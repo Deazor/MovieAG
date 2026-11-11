@@ -19,6 +19,9 @@ public sealed record CatalogTitle
     public string? PosterUrl { get; init; }
     public string? Studio { get; init; }
     public IReadOnlyList<string> Genres { get; init; } = [];
+
+    /// <summary>Оценка Shikimori по десятибалльной шкале; null, пока оценок нет.</summary>
+    public double? Score { get; init; }
 }
 
 /// <summary>Тайтл в выдаче одного источника.</summary>
@@ -48,6 +51,9 @@ public sealed record TitleCard
     public IReadOnlyList<string> Dubs { get; init; } = [];
     public IReadOnlyList<string> Sources { get; init; } = [];
     public int? LatestEpisode { get; init; }
+
+    /// <summary>Оценка Shikimori; у тайтлов, найденных только в источниках, её нет.</summary>
+    public double? Score { get; init; }
 
     /// <summary>Хотя бы один источник не называет озвучки в поиске: полный список есть в карточке тайтла.</summary>
     public bool HasMoreDubs { get; init; }

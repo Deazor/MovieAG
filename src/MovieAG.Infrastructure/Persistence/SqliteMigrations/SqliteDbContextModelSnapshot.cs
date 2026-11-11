@@ -51,6 +51,9 @@ namespace MovieAG.Infrastructure.Persistence.SqliteMigrations
                     b.Property<string>("PosterUrl")
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("Score")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("Status")
                         .HasColumnType("TEXT");
 

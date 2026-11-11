@@ -21,6 +21,7 @@
           <div class="hero-head">
             <h1>{{ title.name }}</h1>
             <div class="muted">{{ meta() }}</div>
+            <app-ratings [ratings]="ratings(title.score)" />
           </div>
           @if (title.description) {
             <p class="description">{{ title.description }}</p>

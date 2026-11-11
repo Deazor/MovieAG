@@ -59,6 +59,7 @@
               <a class="fresh-card" [routerLink]="['/title', item.id]">
                 <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="item.id" />
                 <div class="fresh-name">{{ item.name }}</div>
+                <app-ratings [ratings]="ratings(item.score)" />
                 <div class="muted small">
                   @if (item.latestEpisode) { Серия {{ item.latestEpisode }} · }{{ item.dubs[0] }}
                 </div>

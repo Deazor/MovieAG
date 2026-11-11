@@ -58,6 +58,9 @@ namespace MovieAG.Infrastructure.Persistence.Migrations
                     b.Property<string>("PosterUrl")
                         .HasColumnType("text");
 
+                    b.Property<double?>("Score")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("Status")
                         .HasColumnType("text");
 

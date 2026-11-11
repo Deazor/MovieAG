@@ -14,7 +14,7 @@ public class AllohaMovieSourceTests
 
     private const string MovieJson = """
         {"status":"success","data":{"name":"Зеленая миля","original_name":"The Green Mile","year":1999,"category":1,
-          "id_imdb":"tt0120689","genre":"драма, фэнтези, криминал","time":"03:09","poster":"https://alloha.test/p.jpg",
+          "id_imdb":"tt0120689","genre":"драма, фэнтези, криминал","time":"03:09","rating_imdb":8.6,"rating_kp":9.079,"poster":"https://alloha.test/p.jpg",
           "description":"Описание","iframe":"https://player.test/?token_movie=m&token=secret",
           "translation_iframe":{
             "87":{"name":"Профессиональный многоголосый","iframe":"https://player.test/?token_movie=m&translation=87&token=secret","quality":"BDRip"},
@@ -46,6 +46,7 @@ public class AllohaMovieSourceTests
         Assert.Equal("Зеленая миля", movie!.Title.Name);
         Assert.Equal(189, movie.Title.RuntimeMinutes);
         Assert.Equal(["драма", "фэнтези", "криминал"], movie.Title.Genres);
+        Assert.Equal([new Rating(Rating.Imdb, 8.6), new Rating(Rating.Kinopoisk, 9.1)], movie.Title.Ratings);
         Assert.Equal(["87", "66"], movie.Streams.Select(s => s.StreamId));
         Assert.Equal("Профессиональный многоголосый · BDRip", movie.Streams[0].Label);
         Assert.Equal("Дублированный", movie.Streams[1].Label);

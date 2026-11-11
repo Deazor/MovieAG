@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { closestEpisode, imdbSeed, movieMeta, plural, sourcesSummary, titleMeta } from './format';
+import { animeRatings, closestEpisode, formatRating, imdbSeed, movieMeta, plural, sourcesSummary, titleMeta } from './format';
 import { SourceStatus } from './models';
 
 describe('imdbSeed', () => {
@@ -90,5 +90,18 @@ describe('titleMeta', () => {
 
   it('собирает строку для сериала', () => {
     expect(titleMeta({ kind: 'tv', year: 2023, episodesTotal: 28 })).toBe('Сериал · 2023 · 28 серий');
+  });
+});
+
+describe('formatRating / animeRatings', () => {
+  it('пишет оценку с запятой и минимум одной цифрой после неё', () => {
+    expect(formatRating(8.66)).toBe('8,66');
+    expect(formatRating(7.9)).toBe('7,9');
+    expect(formatRating(8)).toBe('8,0');
+  });
+
+  it('у аниме без оценки нет рейтинга', () => {
+    expect(animeRatings(null)).toEqual([]);
+    expect(animeRatings(8.66)).toEqual([{ source: 'Shikimori', value: 8.66 }]);
   });
 });

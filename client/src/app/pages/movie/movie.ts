@@ -22,6 +22,7 @@ import { attachHls } from '../../core/hls-stream';
 import { MovieDetails, MovieProgressItem, MovieStream, Playback } from '../../core/models';
 import { formatTime, parsePlayerMessage, seekCommands, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
+import { Ratings } from '../../shared/ratings';
 
 const POSITION_SAVE_INTERVAL_MS = 10_000;
 const SEEK_CONFIRM_TIMEOUT_MS = 5_000;
@@ -35,7 +36,7 @@ interface PageData {
 
 @Component({
   selector: 'app-movie',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, Ratings],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './movie.html',
   styleUrls: ['../player/player.scss', './movie.scss'],

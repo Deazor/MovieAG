@@ -104,6 +104,7 @@
         <div class="about">
           <app-poster class="about-poster" [url]="movie.posterUrl" [text]="movie.originalName ?? movie.name" [seed]="seed(movie.imdbId)" />
           <div class="about-text">
+            <app-ratings [ratings]="movie.ratings" />
             @if (meta(movie); as line) {
               <div class="small muted">{{ line }}</div>
             }

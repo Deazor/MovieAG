@@ -15,6 +15,9 @@ public sealed class CachedCatalog(ShikimoriCatalog inner, IMemoryCache memory, A
     private static readonly TimeSpan GenresTtl = TimeSpan.FromDays(1);
     private static readonly TimeSpan DetailTtl = TimeSpan.FromDays(7);
 
+    /// <summary>Карточку без постера или оценки перепроверяем чаще: они появляются у новых тайтлов позже остального.</summary>
+    private static readonly TimeSpan IncompleteDetailTtl = TimeSpan.FromHours(1);
+
     public async Task<IReadOnlyList<CatalogTitle>> SearchAsync(string query, CancellationToken ct)
     {
         var key = "catalog:search:" + query.Trim().ToLowerInvariant();
@@ -38,7 +41,7 @@ public sealed class CachedCatalog(ShikimoriCatalog inner, IMemoryCache memory, A
     public async Task<CatalogTitle?> GetAsync(int id, CancellationToken ct)
     {
         var entity = await db.CachedTitles.FindAsync([id], ct);
-        if (entity is not null && DateTimeOffset.UtcNow - entity.FetchedAt < DetailTtl) return entity.ToModel();
+        if (entity is not null && DateTimeOffset.UtcNow - entity.FetchedAt < TtlFor(entity)) return entity.ToModel();
 
         CatalogTitle? fresh;
         try
@@ -83,4 +86,7 @@ public sealed class CachedCatalog(ShikimoriCatalog inner, IMemoryCache memory, A
         memory.Set(key, page, ListTtl);
         return page;
     }
+
+    private static TimeSpan TtlFor(CachedTitle entity) =>
+        entity.PosterUrl is null || entity.Score is null ? IncompleteDetailTtl : DetailTtl;
 }

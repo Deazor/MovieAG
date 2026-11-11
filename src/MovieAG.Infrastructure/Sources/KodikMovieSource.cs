@@ -128,7 +128,14 @@ public sealed class KodikMovieSource(HttpClient http, MovieSourceDefinition defi
         RuntimeMinutes = result.MaterialData?.Duration,
         Description = result.MaterialData?.Description,
         PosterUrl = result.MaterialData?.PosterUrl,
-        Genres = result.MaterialData?.Genres ?? []
+        Genres = result.MaterialData?.Genres ?? [],
+        Ratings = new[]
+            {
+                Rating.Create(Rating.Imdb, result.MaterialData?.ImdbRating),
+                Rating.Create(Rating.Kinopoisk, result.MaterialData?.KinopoiskRating)
+            }
+            .OfType<Rating>()
+            .ToList()
     };
 
     /// <summary>/get-player не отдаёт метаданные: название и постер подставит каталог TMDB, если он настроен.</summary>

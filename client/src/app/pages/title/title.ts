@@ -3,20 +3,23 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { catchError, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
-import { Loadable, kindLabel, loadable, plural } from '../../core/format';
+import { Loadable, animeRatings, kindLabel, loadable, plural } from '../../core/format';
 import { DubGroup, DubKind, TitleDetails } from '../../core/models';
 import { formatTime, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
+import { Ratings } from '../../shared/ratings';
 
 @Component({
   selector: 'app-title-page',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, Ratings],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './title.html',
   styleUrl: './title.scss',
 })
 export class TitlePage {
   private readonly api = inject(ApiService);
+
+  protected readonly ratings = animeRatings;
 
   /** Параметр :id из адреса. */
   readonly id = input.required<string>();

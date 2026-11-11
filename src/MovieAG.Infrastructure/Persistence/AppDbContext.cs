@@ -92,6 +92,7 @@ public sealed class CachedTitle
     public string? PosterUrl { get; set; }
     public string? Studio { get; set; }
     public List<string> Genres { get; set; } = [];
+    public double? Score { get; set; }
     public DateTimeOffset FetchedAt { get; set; }
 
     public void Apply(CatalogTitle title, DateTimeOffset fetchedAt)
@@ -107,6 +108,7 @@ public sealed class CachedTitle
         PosterUrl = title.PosterUrl;
         Studio = title.Studio;
         Genres = title.Genres.ToList();
+        Score = title.Score;
         FetchedAt = fetchedAt;
     }
 
@@ -123,7 +125,8 @@ public sealed class CachedTitle
         Description = Description,
         PosterUrl = PosterUrl,
         Studio = Studio,
-        Genres = Genres
+        Genres = Genres,
+        Score = Score
     };
 }
 

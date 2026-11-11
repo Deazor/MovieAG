@@ -10,6 +10,7 @@ import { formatTime, shouldResume } from '../../core/player-bridge';
 import { CatalogFilters } from '../../shared/catalog-filters';
 import { Pager } from '../../shared/pager';
 import { Poster } from '../../shared/poster';
+import { Ratings } from '../../shared/ratings';
 
 /**
  * Без фильтров — новинки и поиск по источникам, как раньше.
@@ -17,7 +18,7 @@ import { Poster } from '../../shared/poster';
  */
 @Component({
   selector: 'app-movies',
-  imports: [RouterLink, Poster, CatalogFilters, Pager],
+  imports: [RouterLink, Poster, CatalogFilters, Pager, Ratings],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './movies.html',
   styleUrl: './movies.scss',

@@ -14,6 +14,14 @@ export interface TitleCard {
   sources: string[];
   latestEpisode: number | null;
   hasMoreDubs: boolean;
+  /** Оценка Shikimori; null, пока оценок нет. */
+  score: number | null;
+}
+
+/** Оценка по десятибалльной шкале: IMDb, КП, TMDB или Shikimori. */
+export interface Rating {
+  source: string;
+  value: number;
 }
 
 export interface SearchResult {
@@ -35,6 +43,7 @@ export interface CatalogTitle {
   posterUrl: string | null;
   studio: string | null;
   genres: string[];
+  score: number | null;
 }
 
 export interface DubSource {
@@ -91,6 +100,7 @@ export interface MovieCard {
   year: number | null;
   posterUrl: string | null;
   sources: string[];
+  ratings: Rating[];
 }
 
 export interface MovieListResult {
@@ -108,6 +118,7 @@ export interface MovieTitle {
   description: string | null;
   posterUrl: string | null;
   genres: string[];
+  ratings: Rating[];
 }
 
 export interface MovieStream {

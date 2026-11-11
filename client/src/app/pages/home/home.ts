@@ -2,20 +2,23 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
-import { Loadable, loadable } from '../../core/format';
+import { Loadable, animeRatings, loadable } from '../../core/format';
 import { HistoryItem, TitleCard } from '../../core/models';
 import { formatTime, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
+import { Ratings } from '../../shared/ratings';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, Ratings],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './home.html',
   styleUrl: './home.scss',
 })
 export class Home {
   private readonly api = inject(ApiService);
+
+  protected readonly ratings = animeRatings;
   private readonly router = inject(Router);
 
   protected readonly history = toSignal(loadable(this.api.history()), {
