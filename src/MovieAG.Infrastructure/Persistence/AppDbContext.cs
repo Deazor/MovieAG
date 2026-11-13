@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<CachedTitle> CachedTitles => Set<CachedTitle>();
     public DbSet<WatchProgress> WatchProgress => Set<WatchProgress>();
     public DbSet<MovieProgress> MovieProgress => Set<MovieProgress>();
+    public DbSet<SeriesProgress> SeriesProgress => Set<SeriesProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,18 @@ public class AppDbContext : DbContext
             entity.Property(p => p.StreamId).HasMaxLength(200);
             entity.HasIndex(p => p.UpdatedAt);
         });
+
+        modelBuilder.Entity<SeriesProgress>(entity =>
+        {
+            entity.ToTable("series_progress");
+            entity.HasKey(p => p.ImdbId);
+            entity.Property(p => p.ImdbId).HasMaxLength(16).ValueGeneratedNever();
+            entity.Property(p => p.Name).HasMaxLength(500);
+            entity.Property(p => p.SourceId).HasMaxLength(100);
+            entity.Property(p => p.StreamId).HasMaxLength(200);
+            entity.Property(p => p.StreamLabel).HasMaxLength(200);
+            entity.HasIndex(p => p.UpdatedAt);
+        });
     }
 }
 
@@ -73,6 +86,22 @@ public sealed class MovieProgress
     public string? PosterUrl { get; set; }
     public string SourceId { get; set; } = "";
     public string StreamId { get; set; } = "";
+    public int PositionSeconds { get; set; }
+    public int? DurationSeconds { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>Где остановились в сериале: одна запись на сериал, последняя открытая серия и озвучка.</summary>
+public sealed class SeriesProgress
+{
+    public string ImdbId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? PosterUrl { get; set; }
+    public string SourceId { get; set; } = "";
+    public string StreamId { get; set; } = "";
+    public string StreamLabel { get; set; } = "";
+    public int Season { get; set; }
+    public int Episode { get; set; }
     public int PositionSeconds { get; set; }
     public int? DurationSeconds { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

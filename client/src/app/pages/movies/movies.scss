@@ -60,22 +60,6 @@
 
 .progress-fill { height: 4px; background: var(--accent); }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr));
-  gap: 24px 16px;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  text-decoration: none;
-}
-
-.card-name { font-size: 15px; font-weight: 600; text-wrap: pretty; }
-
 @media (max-width: 600px) {
   .movies { padding: 24px 16px 48px; }
 }

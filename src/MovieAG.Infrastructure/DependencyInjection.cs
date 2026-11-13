@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddSingleton<SourceRegistry>();
         services.AddSingleton<ISourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
         services.AddSingleton<IMovieSourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
+        services.AddSingleton<ISeriesSourceProvider>(sp => sp.GetRequiredService<SourceRegistry>());
         services.AddSingleton<SourceHealthService>();
         services.AddScoped<CachedCatalog>();
         services.AddScoped<ICatalog>(sp => sp.GetRequiredService<CachedCatalog>());
@@ -61,6 +62,9 @@ public static class DependencyInjection
         services.AddTransient<IMovieCatalog>(sp => sp.GetRequiredService<TmdbCatalog>());
         services.AddTransient<IMovieBrowser>(sp => sp.GetRequiredService<TmdbCatalog>());
         services.AddScoped<MovieService>();
+        services.AddTransient<ISeriesCatalog>(sp => sp.GetRequiredService<TmdbCatalog>());
+        services.AddTransient<ISeriesBrowser>(sp => sp.GetRequiredService<TmdbCatalog>());
+        services.AddScoped<SeriesService>();
 
         services.AddQuartz(quartz =>
         {

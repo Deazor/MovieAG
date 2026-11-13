@@ -10,6 +10,8 @@ import {
   MovieProgressItem,
   Playback,
   SearchResult,
+  SeriesDetails,
+  SeriesProgressItem,
   SourceStatus,
   TitleCard,
   TitleDetails,
@@ -98,6 +100,56 @@ export class ApiService {
   /** Фильмы из каталога TMDB; без токена TMDB сервер отвечает 503. */
   browseMovies(query: string, filters: BrowseFilters, page: number): Observable<BrowseResult<MovieCard>> {
     return this.http.get<BrowseResult<MovieCard>>('/api/movies/browse', { params: browseParams(query, filters, page) });
+  }
+
+  /** Без запроса возвращает новинки сериалов источников; карточки те же, что у фильмов. */
+  series(query: string): Observable<MovieListResult> {
+    return this.http.get<MovieListResult>('/api/series', { params: query ? { q: query } : {} });
+  }
+
+  seriesDetails(imdbId: string): Observable<SeriesDetails> {
+    return this.http.get<SeriesDetails>(`/api/series/${imdbId}`);
+  }
+
+  seriesPlayback(imdbId: string, sourceId: string, streamId: string, season: number, episode: number): Observable<Playback> {
+    const params = new HttpParams()
+      .set('source', sourceId)
+      .set('stream', streamId)
+      .set('season', season)
+      .set('episode', episode);
+    return this.http.get<Playback>(`/api/series/${imdbId}/playback`, { params });
+  }
+
+  seriesHistory(): Observable<SeriesProgressItem[]> {
+    return this.http.get<SeriesProgressItem[]>('/api/series/history');
+  }
+
+  seriesProgress(imdbId: string): Observable<SeriesProgressItem> {
+    return this.http.get<SeriesProgressItem>(`/api/series/${imdbId}/progress`);
+  }
+
+  saveSeriesProgress(
+    imdbId: string,
+    body: {
+      sourceId: string;
+      streamId: string;
+      streamLabel: string;
+      season: number;
+      episode: number;
+      seconds: number;
+      durationSeconds: number | null;
+    },
+  ): Observable<void> {
+    return this.http.put<void>(`/api/series/${imdbId}/progress`, body, { keepalive: true });
+  }
+
+  seriesGenres(): Observable<Genre[]> {
+    return this.http.get<Genre[]>('/api/series/genres');
+  }
+
+  /** Сериалы из каталога TMDB; без токена TMDB сервер отвечает 503. */
+  browseSeries(query: string, filters: BrowseFilters, page: number): Observable<BrowseResult<MovieCard>> {
+    return this.http.get<BrowseResult<MovieCard>>('/api/series/browse', { params: browseParams(query, filters, page) });
   }
 
   sources(): Observable<SourceStatus[]> {

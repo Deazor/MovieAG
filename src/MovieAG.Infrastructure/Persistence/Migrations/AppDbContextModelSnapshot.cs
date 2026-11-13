@@ -115,6 +115,57 @@ namespace MovieAG.Infrastructure.Persistence.Migrations
                     b.ToTable("movie_progress", (string)null);
                 });
 
+            modelBuilder.Entity("MovieAG.Infrastructure.Persistence.SeriesProgress", b =>
+                {
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Episode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("PositionSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PosterUrl")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("StreamId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("StreamLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ImdbId");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("series_progress", (string)null);
+                });
+
             modelBuilder.Entity("MovieAG.Infrastructure.Persistence.WatchProgress", b =>
                 {
                     b.Property<int>("TitleId")

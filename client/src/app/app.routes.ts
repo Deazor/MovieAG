@@ -7,6 +7,8 @@ export const routes: Routes = [
   { path: 'watch/:id', loadComponent: () => import('./pages/player/player').then((m) => m.Player), title: 'Просмотр · MovieAG' },
   { path: 'movies', loadComponent: () => import('./pages/movies/movies').then((m) => m.Movies), title: 'Фильмы · MovieAG' },
   { path: 'movies/:imdbId', loadComponent: () => import('./pages/movie/movie').then((m) => m.Movie), title: 'Фильм · MovieAG' },
+  { path: 'series', loadComponent: () => import('./pages/series-list/series-list').then((m) => m.SeriesList), title: 'Сериалы · MovieAG' },
+  { path: 'series/:imdbId', loadComponent: () => import('./pages/series/series').then((m) => m.Series), title: 'Сериал · MovieAG' },
   { path: 'sources', loadComponent: () => import('./pages/sources/sources').then((m) => m.Sources), title: 'Источники · MovieAG' },
   { path: '**', redirectTo: '' },
 ];

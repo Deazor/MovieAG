@@ -6,7 +6,7 @@ namespace MovieAG.Infrastructure.Sources;
 public enum SourceReadiness { Ready, Disabled, NeedsToken, NoAdapter }
 
 /// <summary>Строит адаптеры из конфига и пересобирает их при его изменении.</summary>
-public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
+public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider, ISeriesSourceProvider
 {
     public const string HttpClientName = "sources";
 
@@ -29,12 +29,18 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
         [AllohaMovieSource.AdapterName] = ((s, def) => new AllohaMovieSource(s.Http, def, s.Time), true)
     };
 
+    private static readonly Dictionary<string, (Func<AdapterServices, SeriesSourceDefinition, ISeriesSource> Create, bool NeedsToken)> SeriesAdapters = new()
+    {
+        [AllohaSeriesSource.AdapterName] = ((s, def) => new AllohaSeriesSource(s.Http, def, s.Time), true)
+    };
+
     private readonly SourcesConfigStore _store;
     private readonly IHttpClientFactory _httpClients;
     private readonly IKodikTokenProvider _kodikTokens;
     private readonly TimeProvider _time;
     private volatile IReadOnlyList<IAnimeSource> _active = [];
     private volatile IReadOnlyList<IMovieSource> _activeMovies = [];
+    private volatile IReadOnlyList<ISeriesSource> _activeSeries = [];
 
     public SourceRegistry(SourcesConfigStore store, IHttpClientFactory httpClients, IKodikTokenProvider kodikTokens, TimeProvider time)
     {
@@ -50,13 +56,18 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
 
     IReadOnlyList<IMovieSource> IMovieSourceProvider.Active => _activeMovies;
 
+    IReadOnlyList<ISeriesSource> ISeriesSourceProvider.Active => _activeSeries;
+
     public static SourceReadiness GetReadiness(SourceDefinition definition)
     {
         if (!definition.Enabled) return SourceReadiness.Disabled;
 
-        bool? needsToken = definition is MovieSourceDefinition
-            ? MovieAdapters.TryGetValue(definition.AdapterName, out var movie) ? movie.NeedsToken : null
-            : Adapters.TryGetValue(definition.AdapterName, out var anime) ? anime.NeedsToken : null;
+        bool? needsToken = definition switch
+        {
+            MovieSourceDefinition => MovieAdapters.TryGetValue(definition.AdapterName, out var movie) ? movie.NeedsToken : null,
+            SeriesSourceDefinition => SeriesAdapters.TryGetValue(definition.AdapterName, out var series) ? series.NeedsToken : null,
+            _ => Adapters.TryGetValue(definition.AdapterName, out var anime) ? anime.NeedsToken : null
+        };
 
         return needsToken switch
         {
@@ -78,6 +89,11 @@ public sealed class SourceRegistry : ISourceProvider, IMovieSourceProvider
         _activeMovies = config.Movies.Sources
             .Where(s => GetReadiness(s) == SourceReadiness.Ready)
             .Select(s => MovieAdapters[s.AdapterName].Create(CreateServices(), s))
+            .ToList();
+
+        _activeSeries = config.Series.Sources
+            .Where(s => GetReadiness(s) == SourceReadiness.Ready)
+            .Select(s => SeriesAdapters[s.AdapterName].Create(CreateServices(), s))
             .ToList();
     }
 

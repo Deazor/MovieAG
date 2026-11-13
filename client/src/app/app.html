@@ -8,13 +8,14 @@
     <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">Главная</a>
     <a routerLink="/search" routerLinkActive="active" ariaCurrentWhenActive="page">Каталог</a>
     <a routerLink="/movies" routerLinkActive="active" ariaCurrentWhenActive="page">Фильмы</a>
+    <a routerLink="/series" routerLinkActive="active" ariaCurrentWhenActive="page">Сериалы</a>
     <a routerLink="/sources" routerLinkActive="active" ariaCurrentWhenActive="page">Источники</a>
   </nav>
 
   @if (showSearch()) {
     <form class="search" role="search" (submit)="submitSearch($event, q.value)">
       <label for="global-search" class="visually-hidden">Поиск по всем источникам</label>
-      <input #q id="global-search" type="search" [placeholder]="inMovies() ? 'Найти фильм или tt-номер' : 'Найти аниме'" [value]="currentQuery()" />
+      <input #q id="global-search" type="search" [placeholder]="placeholder()" [value]="currentQuery()" />
     </form>
   } @else {
     <div class="spacer"></div>

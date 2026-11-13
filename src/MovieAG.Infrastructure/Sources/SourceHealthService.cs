@@ -15,6 +15,7 @@ public sealed class SourceHealthService(
     SourcesConfigStore store,
     ISourceProvider sources,
     IMovieSourceProvider movieSources,
+    ISeriesSourceProvider seriesSources,
     ILogger<SourceHealthService> logger)
 {
     private static readonly TimeSpan PingTimeout = TimeSpan.FromSeconds(10);
@@ -22,11 +23,11 @@ public sealed class SourceHealthService(
     private readonly ConcurrentDictionary<string, (bool Online, int LatencyMs, DateTimeOffset CheckedAt)> _results = new();
 
     public IReadOnlyList<SourceStatus> GetStatuses() =>
-        store.Current.Sources.Concat<SourceDefinition>(store.Current.Movies.Sources).Select(ToStatus).ToList();
+        store.Current.AllSources().Select(ToStatus).ToList();
 
     public async Task CheckAllAsync(CancellationToken ct)
     {
-        var all = sources.Active.Concat<IMonitoredSource>(movieSources.Active);
+        var all = sources.Active.Concat<IMonitoredSource>(movieSources.Active).Concat(seriesSources.Active);
         await Task.WhenAll(all.Select(source => CheckAsync(source, ct)));
     }
 

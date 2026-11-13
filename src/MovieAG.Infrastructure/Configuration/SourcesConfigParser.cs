@@ -10,6 +10,7 @@ public static partial class SourcesConfigParser
 {
     private static readonly string[] AllowedTypes = ["balancer", "api", "site"];
     private static readonly string[] AllowedMovieTypes = ["library", "api", "balancer"];
+    private static readonly string[] AllowedSeriesTypes = ["api", "balancer"];
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -30,7 +31,7 @@ public static partial class SourcesConfigParser
 
         Validate(config);
 
-        foreach (var source in config.Sources.Concat<SourceDefinition>(config.Movies.Sources))
+        foreach (var source in config.AllSources())
         {
             source.Token = ResolveToken(source.Token, resolveVariable);
         }
@@ -83,9 +84,10 @@ public static partial class SourcesConfigParser
 
         ValidateSources(config.Sources, AllowedTypes, errors);
         ValidateMovies(config.Movies, errors);
+        ValidateSeries(config.Series, errors);
 
         // Id уникален на весь файл: по нему SetEnabled ищет строку в YAML.
-        errors.AddRange(config.Sources.Concat<SourceDefinition>(config.Movies.Sources)
+        errors.AddRange(config.AllSources()
             .Where(s => !string.IsNullOrWhiteSpace(s.Id))
             .GroupBy(s => s.Id)
             .Where(g => g.Count() > 1)
@@ -113,6 +115,16 @@ public static partial class SourcesConfigParser
             {
                 errors.Add($"{source.Id}: url должен начинаться с http:// или https://");
             }
+        }
+    }
+
+    private static void ValidateSeries(SeriesConfig series, List<string> errors)
+    {
+        ValidateSources(series.Sources, AllowedSeriesTypes, errors);
+
+        foreach (var source in series.Sources.Where(s => s.Latest is < 1 or > MovieService.MaxCards))
+        {
+            errors.Add($"{source.Id}: latest должен быть от 1 до {MovieService.MaxCards}");
         }
     }
 

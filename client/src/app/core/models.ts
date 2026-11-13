@@ -152,3 +152,47 @@ export interface SourceStatus {
   latencyMs: number | null;
   checkedAt: string | null;
 }
+
+export interface SeriesTitle {
+  imdbId: string;
+  name: string;
+  originalName: string | null;
+  year: number | null;
+  seasonsCount: number | null;
+  description: string | null;
+  posterUrl: string | null;
+  genres: string[];
+  ratings: Rating[];
+}
+
+export interface SeriesEpisode {
+  season: number;
+  episode: number;
+}
+
+/** Одна озвучка сериала у одного источника и серии, где она есть. */
+export interface SeriesStream {
+  sourceId: string;
+  streamId: string;
+  label: string;
+  episodes: SeriesEpisode[];
+}
+
+export interface SeriesDetails {
+  series: SeriesTitle;
+  streams: SeriesStream[];
+  failedSources: string[];
+}
+
+export interface SeriesProgressItem {
+  imdbId: string;
+  name: string;
+  posterUrl: string | null;
+  sourceId: string;
+  streamId: string;
+  streamLabel: string;
+  season: number;
+  episode: number;
+  positionSeconds: number;
+  durationSeconds: number | null;
+}

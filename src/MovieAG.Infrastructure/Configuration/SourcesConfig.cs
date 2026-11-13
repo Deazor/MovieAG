@@ -5,6 +5,23 @@ public sealed class SourcesConfig
     public CatalogDefinition Catalog { get; set; } = new();
     public List<SourceDefinition> Sources { get; set; } = [];
     public MoviesConfig Movies { get; set; } = new();
+    public SeriesConfig Series { get; set; } = new();
+
+    /// <summary>Источники всех разделов: аниме, фильмов и сериалов. Метод, а не свойство, чтобы YAML его не читал.</summary>
+    public IEnumerable<SourceDefinition> AllSources() =>
+        Sources.Concat<SourceDefinition>(Movies.Sources).Concat(Series.Sources);
+}
+
+/// <summary>Сериалы: метаданные берутся из того же TMDB, что и у фильмов (movies.catalog).</summary>
+public sealed class SeriesConfig
+{
+    public List<SeriesSourceDefinition> Sources { get; set; } = [];
+}
+
+public sealed class SeriesSourceDefinition : SourceDefinition
+{
+    /// <summary>Сколько новинок источника показывать на странице «Сериалы»; по умолчанию общий лимит страницы.</summary>
+    public int? Latest { get; set; }
 }
 
 public sealed class CatalogDefinition

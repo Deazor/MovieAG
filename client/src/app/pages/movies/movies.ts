@@ -9,8 +9,8 @@ import { MovieCard, MovieListResult, MovieProgressItem } from '../../core/models
 import { formatTime, shouldResume } from '../../core/player-bridge';
 import { CatalogFilters } from '../../shared/catalog-filters';
 import { Pager } from '../../shared/pager';
+import { MediaGrid } from '../../shared/media-grid';
 import { Poster } from '../../shared/poster';
-import { Ratings } from '../../shared/ratings';
 
 /**
  * Без фильтров — новинки и поиск по источникам, как раньше.
@@ -18,7 +18,7 @@ import { Ratings } from '../../shared/ratings';
  */
 @Component({
   selector: 'app-movies',
-  imports: [RouterLink, Poster, CatalogFilters, Pager, Ratings],
+  imports: [RouterLink, Poster, CatalogFilters, Pager, MediaGrid],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './movies.html',
   styleUrl: './movies.scss',

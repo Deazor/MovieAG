@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Net;
-using System.Text.Json;
 using MovieAG.Core;
 using MovieAG.Infrastructure.Configuration;
 
@@ -15,28 +13,20 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
 {
     public const string AdapterName = "alloha";
     public const string DefaultStreamId = "default";
-    private const string DefaultUrl = "https://api.alloha.tv";
 
     /// <summary>Сколько лет назад вышедший фильм ещё считается новинкой: 1 — этот и прошлый год.</summary>
     private const int RecentYears = 1;
 
-    /// <summary>Верхняя граница страниц за один показ новинок, чтобы уложиться в таймаут источника.</summary>
-    private const int MaxLatestPages = 3;
-
     /// <summary>«Зелёная миля»: проверка связи лишь убеждается, что Alloha принимает токен.</summary>
     private const string PingImdbId = "tt0120689";
 
-    private readonly string _baseUrl = (definition.Url ?? DefaultUrl).TrimEnd('/');
+    private readonly AllohaApiClient _api = new(http, definition);
 
     public string Id => definition.Id;
 
     public async Task<IReadOnlyList<MovieTitle>> SearchAsync(string query, CancellationToken ct)
     {
-        // Без list=1 Alloha ищет по названию одну запись с точным совпадением; со списком находит и по части названия.
-        var items = ImdbId.IsValid(query)
-            ? await RequestAsync(ct, ("imdb", query))
-            : await RequestAsync(ct, ("name", query), ("list", "1"));
-
+        var items = await _api.SearchAsync(query, ct);
         return items
             .Where(IsMovie)
             .GroupBy(i => i.IdImdb!, StringComparer.Ordinal)
@@ -45,30 +35,14 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
     }
 
     /// <summary>
-    /// Alloha сортирует по дате добавления к себе, поэтому в начале списка бывают и старые фильмы.
-    /// Новыми считаются фильмы этого и прошлого года; страницы листаются, пока их не наберётся нужное число.
+    /// В начале списка Alloha бывают и старые фильмы, добавленные недавно,
+    /// поэтому новинками считаются фильмы этого и прошлого года.
     /// </summary>
     public async Task<IReadOnlyList<MovieTitle>> GetLatestAsync(int limit, CancellationToken ct)
     {
-        var count = definition.Latest ?? limit;
         var minYear = time.GetUtcNow().Year - RecentYears;
-        var found = new List<MovieTitle>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var page = 1; page <= MaxLatestPages && found.Count < count; page++)
-        {
-            var items = await RequestAsync(ct,
-                ("list", "movie"),
-                ("order", "date"),
-                ("page", page.ToString(CultureInfo.InvariantCulture)));
-            if (items.Count == 0) break;
-
-            found.AddRange(items
-                .Where(i => IsMovie(i) && i.Year >= minYear && seen.Add(i.IdImdb!))
-                .Select(ToTitle));
-        }
-
-        return found.Take(count).ToList();
+        var items = await _api.GetLatestAsync("movie", definition.Latest ?? limit, i => IsMovie(i) && i.Year >= minYear, ct);
+        return items.Select(ToTitle).ToList();
     }
 
     public async Task<SourceMovie?> FindAsync(string imdbId, CancellationToken ct)
@@ -88,73 +62,26 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         var link = streamId == DefaultStreamId
             ? item.Iframe
             : item.TranslationIframe?.GetValueOrDefault(streamId)?.Iframe;
-        return string.IsNullOrEmpty(link) ? null : new Playback(PlaybackKind.Iframe, NormalizeLink(link), []);
+        return string.IsNullOrEmpty(link) ? null : new Playback(PlaybackKind.Iframe, AllohaApiClient.NormalizeLink(link), []);
     }
 
-    public Task PingAsync(CancellationToken ct) => RequestAsync(ct, ("imdb", PingImdbId));
+    public Task PingAsync(CancellationToken ct) => _api.FindByImdbAsync(PingImdbId, ct);
 
     private async Task<AllohaItem?> FindMovieAsync(string imdbId, CancellationToken ct)
     {
         if (!ImdbId.IsValid(imdbId)) return null;
 
-        var items = await RequestAsync(ct, ("imdb", imdbId));
+        var items = await _api.FindByImdbAsync(imdbId, ct);
         return items.FirstOrDefault(i => IsMovie(i) && i.IdImdb == imdbId);
     }
 
-    /// <summary>
-    /// Alloha всегда отвечает 200 и text/html, а ошибку передаёт в status/error_info.
-    /// «Не найдено» превращается в пустой список, отказ в токене — в исключение.
-    /// </summary>
-    private async Task<IReadOnlyList<AllohaItem>> RequestAsync(CancellationToken ct, params (string Key, string Value)[] parameters)
-    {
-        if (string.IsNullOrEmpty(definition.Token))
-        {
-            throw new InvalidOperationException($"Для источника {Id} не задан токен Alloha");
-        }
-
-        var query = string.Join('&', parameters
-            .Prepend(("token", definition.Token))
-            .Select(p => $"{p.Item1}={Uri.EscapeDataString(p.Item2)}"));
-        var url = $"{_baseUrl}/?{query}";
-        using var response = await http.GetAsync(url, ct);
-
-        // В сообщения об ошибках не попадает URL, поэтому токен не утечёт в лог.
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException($"Alloha вернул {(int)response.StatusCode}", null, response.StatusCode);
-        }
-
-        var body = JsonSerializer.Deserialize<AllohaResponse>(await response.Content.ReadAsStringAsync(ct), SourceJson.Options)
-            ?? throw new InvalidOperationException("Пустой ответ Alloha");
-
-        if (body.Status != "success")
-        {
-            var error = body.ErrorInfo ?? "неизвестная ошибка";
-            if (error.Contains("token", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new HttpRequestException($"Alloha отклонил токен: {error}", null, HttpStatusCode.Unauthorized);
-            }
-
-            return [];
-        }
-
-        return body.Data?.ValueKind switch
-        {
-            JsonValueKind.Object => [body.Data.Value.Deserialize<AllohaItem>(SourceJson.Options)!],
-            JsonValueKind.Array => body.Data.Value.Deserialize<List<AllohaItem>>(SourceJson.Options) ?? [],
-            _ => []
-        };
-    }
-
-    /// <summary>У сериалов есть seasons; без IMDb ID карточку фильма не построить.</summary>
-    private static bool IsMovie(AllohaItem item) =>
-        item.Seasons is not { ValueKind: JsonValueKind.Object } && ImdbId.IsValid(item.IdImdb);
+    private static bool IsMovie(AllohaItem item) => !AllohaApiClient.IsSeries(item) && ImdbId.IsValid(item.IdImdb);
 
     private List<MovieStream> ListStreams(AllohaItem item)
     {
         var streams = (item.TranslationIframe ?? [])
             .Where(t => !string.IsNullOrEmpty(t.Value.Iframe))
-            .Select(t => new MovieStream(Id, t.Key, Label(t.Value)))
+            .Select(t => new MovieStream(Id, t.Key, AllohaApiClient.Label(t.Value.DisplayName, t.Value.Quality)))
             .ToList();
 
         // Если озвучки не перечислены, остаётся общий плеер фильма.
@@ -166,12 +93,6 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         return streams;
     }
 
-    private static string Label(AllohaTranslation translation)
-    {
-        var name = translation.Name ?? "Без названия";
-        return string.IsNullOrEmpty(translation.Quality) ? name : $"{name} · {translation.Quality}";
-    }
-
     private static MovieTitle ToTitle(AllohaItem item) => new()
     {
         ImdbId = item.IdImdb!,
@@ -181,12 +102,8 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         RuntimeMinutes = ParseRuntime(item.Time),
         Description = item.Description,
         PosterUrl = item.Poster,
-        Genres = (item.Genre ?? "")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList(),
-        Ratings = new[] { Rating.Create(Rating.Imdb, item.RatingImdb), Rating.Create(Rating.Kinopoisk, item.RatingKp) }
-            .OfType<Rating>()
-            .ToList()
+        Genres = AllohaApiClient.Genres(item),
+        Ratings = AllohaApiClient.Ratings(item)
     };
 
     /// <summary>Длительность приходит строкой вида «03:09» (часы:минуты).</summary>
@@ -194,27 +111,4 @@ public sealed class AllohaMovieSource(HttpClient http, MovieSourceDefinition def
         TimeSpan.TryParseExact(time, @"hh\:mm", CultureInfo.InvariantCulture, out var span) && span > TimeSpan.Zero
             ? (int)span.TotalMinutes
             : null;
-
-    private static string NormalizeLink(string link) => link.StartsWith("//", StringComparison.Ordinal) ? "https:" + link : link;
-
-    private sealed record AllohaResponse(string? Status, string? ErrorInfo, JsonElement? Data);
-
-    private sealed record AllohaItem
-    {
-        public string? Name { get; init; }
-        public string? OriginalName { get; init; }
-        public int? Year { get; init; }
-        public string? IdImdb { get; init; }
-        public string? Genre { get; init; }
-        public string? Time { get; init; }
-        public string? Poster { get; init; }
-        public string? Description { get; init; }
-        public string? Iframe { get; init; }
-        public Dictionary<string, AllohaTranslation>? TranslationIframe { get; init; }
-        public JsonElement? Seasons { get; init; }
-        public double? RatingImdb { get; init; }
-        public double? RatingKp { get; init; }
-    }
-
-    private sealed record AllohaTranslation(string? Name, string? Iframe, string? Quality);
 }

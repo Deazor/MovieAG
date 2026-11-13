@@ -62,18 +62,7 @@
         @if (catalog.data.items.length === 0) {
           <p class="state-message">С такими фильтрами ничего нет. Снимите один из них.</p>
         } @else {
-          <div class="grid">
-            @for (item of catalog.data.items; track item.imdbId) {
-              <a class="card" [routerLink]="['/movies', item.imdbId]">
-                <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="seed(item.imdbId)" />
-                <div class="card-name">{{ item.name }}</div>
-                <app-ratings [ratings]="item.ratings" />
-                @if (item.year) {
-                  <div class="muted small">{{ item.year }}</div>
-                }
-              </a>
-            }
-          </div>
+          <app-media-grid [items]="catalog.data.items" basePath="/movies" />
         }
         <app-pager [page]="catalog.data.page" [hasMore]="catalog.data.hasMore" />
       }
@@ -95,18 +84,7 @@
               }
             </p>
           } @else {
-            <div class="grid">
-              @for (item of state.data.items; track item.imdbId) {
-                <a class="card" [routerLink]="['/movies', item.imdbId]">
-                  <app-poster [url]="item.posterUrl" [text]="item.originalName ?? item.name" [seed]="seed(item.imdbId)" />
-                  <div class="card-name">{{ item.name }}</div>
-                <app-ratings [ratings]="item.ratings" />
-                  <div class="muted small">
-                    @if (item.year) { {{ item.year }} · }<span class="mono">{{ item.imdbId }}</span>
-                  </div>
-                </a>
-              }
-            </div>
+            <app-media-grid [items]="state.data.items" basePath="/movies" [showImdbId]="true" />
           }
         }
       }

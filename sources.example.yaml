@@ -60,3 +60,13 @@ movies:
           genres: [Фантастика]
           license: CC BY 3.0
           url: https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8
+
+# Сериалы: карточки по IMDb ID, метаданные из того же TMDB, что и у фильмов (movies.catalog)
+# series:
+#   sources:
+#     # Alloha: только сериалы, нужен собственный токен из кабинета Alloha
+#     - id: alloha-series
+#       adapter: alloha
+#       type: balancer
+#       token: ${ALLOHA_TOKEN}
+#       latest: 24

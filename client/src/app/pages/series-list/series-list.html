@@ -1,0 +1,92 @@
+<main class="movies">
+  <div class="head">
+    <h1 class="page-title">{{ heading() }}</h1>
+    @let state = result();
+    @if (browseMode()) {
+      <p class="muted">Каталог TMDB: есть ли сериал в ваших источниках, видно на его странице.</p>
+    } @else if (state?.status === 'ready') {
+      <p class="muted">
+        {{ countLabel(state.data.items.length) }}
+        @if (state.data.failedSources.length > 0) {
+          · <a routerLink="/sources">Не ответили: {{ state.data.failedSources.join(', ') }}</a>
+        }
+      </p>
+    }
+  </div>
+
+  @if (catalogMissing()) {
+    <p class="muted small">
+      Чтобы выбирать сериалы по жанрам и годам, задайте токен TMDB в переменной <span class="mono">TMDB_TOKEN</span>.
+    </p>
+  } @else {
+    <app-catalog-filters [genres]="genreList()" [filters]="filters()" (filtersChange)="onFiltersChange($event)" />
+  }
+
+  @let historyState = history();
+  @if (!query() && !browseMode() && historyState.status === 'ready' && historyState.data.length > 0) {
+    <section class="block" aria-labelledby="series-continue-h">
+      <h2 id="series-continue-h" class="section-title">Продолжить просмотр</h2>
+      <div class="continue-grid">
+        @for (item of historyState.data; track item.imdbId) {
+          <a class="continue-card" [routerLink]="['/series', item.imdbId]">
+            <app-poster class="thumb" [url]="item.posterUrl" [text]="item.name" [seed]="seed(item.imdbId)" [fontSize]="13" [sun]="false" />
+            <div class="continue-body">
+              <div class="continue-name">{{ item.name }}</div>
+              <div class="muted small">{{ episodeLabel(item) }}</div>
+            </div>
+          </a>
+        }
+      </div>
+    </section>
+  }
+
+  <section class="block" aria-label="Список сериалов">
+    @if (browseMode()) {
+      @let catalog = browse();
+      @if (catalog?.status === 'loading') {
+        <p class="state-message">Загружаем каталог…</p>
+      } @else if (catalog?.status === 'error') {
+        <p class="state-message">
+          @if (catalog?.status === 'error' && catalog.httpStatus === 503) {
+            Не задан токен TMDB: без него выбор по жанрам недоступен.
+          } @else if (catalog?.status === 'error' && catalog.httpStatus === 400) {
+            Каталог не принял такие фильтры. Проверьте годы выхода.
+          } @else {
+            Каталог не ответил. Повторите попытку позже.
+          }
+        </p>
+      } @else if (catalog?.status === 'ready') {
+        @if (catalog.data.items.length === 0) {
+          <p class="state-message">С такими фильтрами ничего нет. Снимите один из них.</p>
+        } @else {
+          <app-media-grid [items]="catalog.data.items" basePath="/series" />
+        }
+        <app-pager [page]="catalog.data.page" [hasMore]="catalog.data.hasMore" />
+      }
+    } @else if (state) {
+      @switch (state.status) {
+        @case ('loading') {
+          <p class="state-message">Загружаем сериалы…</p>
+        }
+        @case ('error') {
+          <p class="state-message">Не удалось получить список. Проверьте, что сервер запущен, и повторите запрос.</p>
+        }
+        @case ('ready') {
+          @if (state.data.items.length === 0) {
+            <p class="state-message">
+              @if (query()) {
+                Ничего не нашлось.
+              } @else if (state.data.queriedSources.length === 0) {
+                Нет источников сериалов. Добавьте секцию <span class="mono">series</span> на странице <a routerLink="/sources">Источники</a>.
+              } @else {
+                Новинок пока нет.
+              }
+            </p>
+          } @else {
+            <app-media-grid [items]="state.data.items" basePath="/series" [showImdbId]="true" />
+          }
+        }
+      }
+    }
+  </section>
+</main>

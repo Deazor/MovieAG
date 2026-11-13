@@ -10,18 +10,19 @@ using MovieAG.Infrastructure.Sources;
 namespace MovieAG.Infrastructure.Catalog;
 
 /// <summary>
-/// Метаданные фильмов из TMDB: IMDb ID переводится во внутренний ID через /find.
-/// Выборка по жанрам идёт через /discover, а для карточек каждому фильму подбирается IMDb ID.
+/// Метаданные фильмов и сериалов из TMDB: IMDb ID переводится во внутренний ID через /find.
+/// Выборка по жанрам идёт через /discover, а для карточек каждой записи подбирается IMDb ID.
+/// Фильмы и сериалы отличаются только путями и названиями полей дат, см. <see cref="TmdbMedia"/>.
 /// </summary>
 public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMemoryCache memory, TimeProvider time)
-    : IMovieCatalog, IMovieBrowser
+    : IMovieCatalog, IMovieBrowser, ISeriesCatalog, ISeriesBrowser
 {
     private const string Language = "ru-RU";
 
     /// <summary>TMDB не отдаёт страницы дальше 500-й.</summary>
     private const int MaxTmdbPage = 500;
 
-    /// <summary>По рейтингу без порога наверх попадают фильмы с одной-двумя оценками.</summary>
+    /// <summary>По рейтингу без порога наверх попадают записи с одной-двумя оценками.</summary>
     private const int MinRatingVotes = 200;
 
     /// <summary>Сколько запросов external_ids идёт параллельно: TMDB ограничивает частоту запросов.</summary>
@@ -35,16 +36,82 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
     private static readonly TimeSpan ExternalIdsTtl = TimeSpan.FromDays(7);
     private static readonly CultureInfo RussianCulture = CultureInfo.GetCultureInfo("ru-RU");
 
+    private static readonly TmdbMedia Movies = new("movie", "primary_release_date", "primary_release_year", "фильмов");
+    private static readonly TmdbMedia Tv = new("tv", "first_air_date", "first_air_date_year", "сериалов");
+
     private MovieCatalogDefinition Settings => config.Current.Movies.Catalog;
 
-    public async Task<IReadOnlyList<Core.Genre>> GetGenresAsync(CancellationToken ct)
-    {
-        RequireToken();
+    // ── Фильмы ───────────────────────────────────────────────
 
-        const string key = "tmdb:genres";
+    public async Task<MovieTitle?> GetAsync(string imdbId, CancellationToken ct)
+    {
+        var details = await FindDetailsAsync(Movies, imdbId, ct);
+        return details is null ? null : ToMovie(imdbId, details);
+    }
+
+    public Task<IReadOnlyList<Core.Genre>> GetGenresAsync(CancellationToken ct) => GetGenresAsync(Movies, ct);
+
+    public Task<BrowsePage<MovieTitle>> BrowseAsync(BrowseQuery query, CancellationToken ct) =>
+        BrowseAsync(Movies, query, (imdbId, item) => new MovieTitle
+        {
+            ImdbId = imdbId,
+            Name = item.DisplayName ?? imdbId,
+            OriginalName = item.OriginalDisplayName,
+            Year = ParseYear(item.Date),
+            Description = Blank(item.Overview),
+            PosterUrl = ToPosterUrl(item.PosterPath),
+            Ratings = TmdbRating(item.VoteAverage, item.VoteCount)
+        }, ct);
+
+    // ── Сериалы ──────────────────────────────────────────────
+
+    async Task<SeriesTitle?> ISeriesCatalog.GetAsync(string imdbId, CancellationToken ct)
+    {
+        var details = await FindDetailsAsync(Tv, imdbId, ct);
+        return details is null ? null : ToSeries(imdbId, details);
+    }
+
+    public Task<IReadOnlyList<Core.Genre>> GetSeriesGenresAsync(CancellationToken ct) => GetGenresAsync(Tv, ct);
+
+    public Task<BrowsePage<SeriesTitle>> BrowseSeriesAsync(BrowseQuery query, CancellationToken ct) =>
+        BrowseAsync(Tv, query, (imdbId, item) => new SeriesTitle
+        {
+            ImdbId = imdbId,
+            Name = item.DisplayName ?? imdbId,
+            OriginalName = item.OriginalDisplayName,
+            Year = ParseYear(item.Date),
+            Description = Blank(item.Overview),
+            PosterUrl = ToPosterUrl(item.PosterPath),
+            Ratings = TmdbRating(item.VoteAverage, item.VoteCount)
+        }, ct);
+
+    // ── Общее ────────────────────────────────────────────────
+
+    /// <summary>Без токена каталог молчит: карточки строятся из данных источников.</summary>
+    private async Task<Details?> FindDetailsAsync(TmdbMedia media, string imdbId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(Settings.Token)) return null;
+
+        var key = $"tmdb:{media.Segment}:{imdbId}";
+        if (memory.TryGetValue(key, out Details? cached) && cached is not null) return cached;
+
+        var found = await GetAsync<FindResponse>($"/3/find/{Uri.EscapeDataString(imdbId)}?external_source=imdb_id", ct);
+        var match = (media == Tv ? found?.TvResults : found?.MovieResults)?.FirstOrDefault();
+        if (match is null) return null;
+
+        var details = await GetAsync<Details>($"/3/{media.Segment}/{match.Id.ToString(CultureInfo.InvariantCulture)}", ct);
+        if (details is not null) memory.Set(key, details, CacheTtl);
+        return details;
+    }
+
+    private async Task<IReadOnlyList<Core.Genre>> GetGenresAsync(TmdbMedia media, CancellationToken ct)
+    {
+        RequireToken(media);
+
+        var key = $"tmdb:genres:{media.Segment}";
         if (memory.TryGetValue(key, out IReadOnlyList<Core.Genre>? cached) && cached is not null) return cached;
 
-        var response = await GetAsync<GenreList>("/3/genre/movie/list", ct);
+        var response = await GetAsync<GenreList>($"/3/genre/{media.Segment}/list", ct);
         IReadOnlyList<Core.Genre> genres = (response?.Genres ?? [])
             .Where(g => !string.IsNullOrWhiteSpace(g.Name))
             .Select(g => new Core.Genre(g.Id.ToString(CultureInfo.InvariantCulture), Capitalize(g.Name!)))
@@ -60,40 +127,41 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
     /// С текстом — /search: он не умеет фильтровать по жанру и сортировать, поэтому это делается внутри страницы,
     /// и страница может оказаться короче обычной.
     /// </summary>
-    public async Task<BrowsePage<MovieTitle>> BrowseAsync(BrowseQuery query, CancellationToken ct)
+    private async Task<BrowsePage<T>> BrowseAsync<T>(
+        TmdbMedia media, BrowseQuery query, Func<string, ListedItem, T> map, CancellationToken ct)
     {
-        RequireToken();
+        RequireToken(media);
 
-        var key = ("tmdb:browse", query with { Text = query.Text?.Trim().ToLowerInvariant() });
-        if (memory.TryGetValue(key, out BrowsePage<MovieTitle>? cached) && cached is not null) return cached;
+        var key = ($"tmdb:browse:{media.Segment}", query with { Text = query.Text?.Trim().ToLowerInvariant() });
+        if (memory.TryGetValue(key, out BrowsePage<T>? cached) && cached is not null) return cached;
 
         var hasText = !string.IsNullOrWhiteSpace(query.Text);
-        var list = await GetAsync<MovieList>(hasText ? BuildSearchPath(query) : BuildDiscoverPath(query), ct);
+        var list = await GetAsync<ItemList>(hasText ? BuildSearchPath(media, query) : BuildDiscoverPath(media, query), ct);
 
         var results = list?.Results ?? [];
         if (hasText) results = SortWithinPage(results.Where(m => Matches(m, query)), query.Sort);
 
-        var titles = await ResolveImdbIdsAsync(results, ct);
+        var items = await ResolveImdbIdsAsync(media, results, ct);
         var hasMore = list is not null && query.Page < Math.Min(list.TotalPages, MaxTmdbPage);
 
-        var page = new BrowsePage<MovieTitle>(titles, query.Page, hasMore);
+        var page = new BrowsePage<T>(items.Select(x => map(x.ImdbId, x.Item)).ToList(), query.Page, hasMore);
         memory.Set(key, page, BrowseTtl);
         return page;
     }
 
-    internal string BuildDiscoverPath(BrowseQuery query)
+    private string BuildDiscoverPath(TmdbMedia media, BrowseQuery query)
     {
         var parameters = new List<string>
         {
             "include_adult=false",
             $"page={query.Page.ToString(CultureInfo.InvariantCulture)}",
-            $"sort_by={ToSortBy(query.Sort)}"
+            $"sort_by={ToSortBy(media, query.Sort)}"
         };
 
         if (!string.IsNullOrEmpty(query.Genre)) parameters.Add($"with_genres={Uri.EscapeDataString(query.Genre)}");
-        if (query.YearFrom is { } from) parameters.Add($"primary_release_date.gte={from.ToString(CultureInfo.InvariantCulture)}-01-01");
+        if (query.YearFrom is { } from) parameters.Add($"{media.DateField}.gte={from.ToString(CultureInfo.InvariantCulture)}-01-01");
 
-        // По дате выхода без верхней границы первыми шли бы ещё не вышедшие фильмы.
+        // По дате выхода без верхней границы первыми шли бы ещё не вышедшие записи.
         var to = query.YearTo is { } year ? new DateOnly(year, 12, 31) : (DateOnly?)null;
         if (query.Sort == BrowseSort.Date)
         {
@@ -101,57 +169,58 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
             to = to is null || to > today ? today : to;
         }
 
-        if (to is { } end) parameters.Add($"primary_release_date.lte={end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+        if (to is { } end) parameters.Add($"{media.DateField}.lte={end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
         if (query.Sort == BrowseSort.Rating) parameters.Add($"vote_count.gte={MinRatingVotes.ToString(CultureInfo.InvariantCulture)}");
 
-        return "/3/discover/movie?" + string.Join('&', parameters);
+        return $"/3/discover/{media.Segment}?" + string.Join('&', parameters);
     }
 
-    internal static string BuildSearchPath(BrowseQuery query)
+    private static string BuildSearchPath(TmdbMedia media, BrowseQuery query)
     {
-        var path = $"/3/search/movie?include_adult=false&page={query.Page.ToString(CultureInfo.InvariantCulture)}&query={Uri.EscapeDataString(query.Text!.Trim())}";
+        var path = $"/3/search/{media.Segment}?include_adult=false&page={query.Page.ToString(CultureInfo.InvariantCulture)}&query={Uri.EscapeDataString(query.Text!.Trim())}";
         return query.YearFrom is { } from && from == query.YearTo
-            ? $"{path}&primary_release_year={from.ToString(CultureInfo.InvariantCulture)}"
+            ? $"{path}&{media.YearParam}={from.ToString(CultureInfo.InvariantCulture)}"
             : path;
     }
 
-    private static string ToSortBy(BrowseSort sort) => sort switch
+    private static string ToSortBy(TmdbMedia media, BrowseSort sort) => sort switch
     {
         BrowseSort.Rating => "vote_average.desc",
         BrowseSort.Popularity => "popularity.desc",
-        _ => "primary_release_date.desc"
+        _ => $"{media.DateField}.desc"
     };
 
-    private static bool Matches(ListedMovie movie, BrowseQuery query)
+    private static bool Matches(ListedItem item, BrowseQuery query)
     {
         if (!string.IsNullOrEmpty(query.Genre)
-            && !(movie.GenreIds ?? []).Any(id => id.ToString(CultureInfo.InvariantCulture) == query.Genre))
+            && !(item.GenreIds ?? []).Any(id => id.ToString(CultureInfo.InvariantCulture) == query.Genre))
         {
             return false;
         }
 
-        var year = ParseYear(movie.ReleaseDate);
+        var year = ParseYear(item.Date);
         if (query.YearFrom is { } from && (year is null || year < from)) return false;
         return query.YearTo is not { } to || (year is not null && year <= to);
     }
 
-    private static List<ListedMovie> SortWithinPage(IEnumerable<ListedMovie> movies, BrowseSort sort) => sort switch
+    private static List<ListedItem> SortWithinPage(IEnumerable<ListedItem> items, BrowseSort sort) => sort switch
     {
-        BrowseSort.Rating => movies.OrderByDescending(m => m.VoteAverage ?? 0).ToList(),
-        BrowseSort.Popularity => movies.OrderByDescending(m => m.Popularity ?? 0).ToList(),
-        _ => movies.OrderByDescending(m => m.ReleaseDate ?? "", StringComparer.Ordinal).ToList()
+        BrowseSort.Rating => items.OrderByDescending(m => m.VoteAverage ?? 0).ToList(),
+        BrowseSort.Popularity => items.OrderByDescending(m => m.Popularity ?? 0).ToList(),
+        _ => items.OrderByDescending(m => m.Date ?? "", StringComparer.Ordinal).ToList()
     };
 
-    /// <summary>Фильмы без IMDb ID пропускаются: на странице фильмов это ключ карточки.</summary>
-    private async Task<IReadOnlyList<MovieTitle>> ResolveImdbIdsAsync(IReadOnlyList<ListedMovie> movies, CancellationToken ct)
+    /// <summary>Записи без IMDb ID пропускаются: на страницах фильмов и сериалов это ключ карточки.</summary>
+    private async Task<IReadOnlyList<(string ImdbId, ListedItem Item)>> ResolveImdbIdsAsync(
+        TmdbMedia media, IReadOnlyList<ListedItem> items, CancellationToken ct)
     {
         using var throttle = new SemaphoreSlim(ExternalIdsConcurrency);
-        var imdbIds = await Task.WhenAll(movies.Select(async movie =>
+        var imdbIds = await Task.WhenAll(items.Select(async item =>
         {
             await throttle.WaitAsync(ct);
             try
             {
-                return await GetImdbIdAsync(movie.Id, ct);
+                return await GetImdbIdAsync(media, item.Id, ct);
             }
             finally
             {
@@ -159,68 +228,61 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
             }
         }));
 
-        return movies
-            .Zip(imdbIds, (movie, imdbId) => (Movie: movie, ImdbId: imdbId))
+        return items
+            .Zip(imdbIds, (item, imdbId) => (ImdbId: imdbId, Item: item))
             .Where(x => ImdbId.IsValid(x.ImdbId))
             .DistinctBy(x => x.ImdbId)
-            .Select(x => ToTitle(x.ImdbId!, x.Movie))
+            .Select(x => (x.ImdbId!, x.Item))
             .ToList();
     }
 
-    private async Task<string?> GetImdbIdAsync(int tmdbId, CancellationToken ct)
+    private async Task<string?> GetImdbIdAsync(TmdbMedia media, int tmdbId, CancellationToken ct)
     {
-        var key = "tmdb:imdb:" + tmdbId.ToString(CultureInfo.InvariantCulture);
+        var id = tmdbId.ToString(CultureInfo.InvariantCulture);
+        var key = $"tmdb:imdb:{media.Segment}:{id}";
         if (memory.TryGetValue(key, out string? cached)) return cached;
 
-        var ids = await GetAsync<ExternalIds>($"/3/movie/{tmdbId.ToString(CultureInfo.InvariantCulture)}/external_ids", ct);
+        var ids = await GetAsync<ExternalIds>($"/3/{media.Segment}/{id}/external_ids", ct);
         var imdbId = string.IsNullOrEmpty(ids?.ImdbId) ? null : ids.ImdbId;
         memory.Set(key, imdbId, ExternalIdsTtl);
         return imdbId;
     }
 
-    private MovieTitle ToTitle(string imdbId, ListedMovie movie) => new()
+    private MovieTitle ToMovie(string imdbId, Details details) => new()
     {
         ImdbId = imdbId,
-        Name = movie.Title ?? movie.OriginalTitle ?? imdbId,
-        OriginalName = movie.OriginalTitle,
-        Year = ParseYear(movie.ReleaseDate),
-        Description = string.IsNullOrWhiteSpace(movie.Overview) ? null : movie.Overview,
-        PosterUrl = string.IsNullOrEmpty(movie.PosterPath) ? null : Settings.ImagesUrl.TrimEnd('/') + movie.PosterPath,
-        Ratings = TmdbRating(movie.VoteAverage, movie.VoteCount)
+        Name = details.DisplayName ?? imdbId,
+        OriginalName = details.OriginalDisplayName,
+        Year = ParseYear(details.Date),
+        RuntimeMinutes = details.Runtime is > 0 ? details.Runtime : null,
+        Description = Blank(details.Overview),
+        PosterUrl = ToPosterUrl(details.PosterPath),
+        Genres = details.Genres?.Select(g => g.Name).OfType<string>().ToList() ?? [],
+        Ratings = TmdbRating(details.VoteAverage, details.VoteCount)
     };
 
-    private void RequireToken()
+    private SeriesTitle ToSeries(string imdbId, Details details) => new()
+    {
+        ImdbId = imdbId,
+        Name = details.DisplayName ?? imdbId,
+        OriginalName = details.OriginalDisplayName,
+        Year = ParseYear(details.Date),
+        SeasonsCount = details.NumberOfSeasons is > 0 ? details.NumberOfSeasons : null,
+        Description = Blank(details.Overview),
+        PosterUrl = ToPosterUrl(details.PosterPath),
+        Genres = details.Genres?.Select(g => g.Name).OfType<string>().ToList() ?? [],
+        Ratings = TmdbRating(details.VoteAverage, details.VoteCount)
+    };
+
+    private string? ToPosterUrl(string? path) =>
+        string.IsNullOrEmpty(path) ? null : Settings.ImagesUrl.TrimEnd('/') + path;
+
+    private void RequireToken(TmdbMedia media)
     {
         if (string.IsNullOrEmpty(Settings.Token))
         {
-            throw new CatalogUnavailableException("Для выбора фильмов по жанрам задайте токен TMDB в переменной TMDB_TOKEN");
+            throw new CatalogUnavailableException($"Для выбора {media.GenitivePlural} по жанрам задайте токен TMDB в переменной TMDB_TOKEN");
         }
-    }
-
-    private static int? ParseYear(string? date) =>
-        DateOnly.TryParse(date, CultureInfo.InvariantCulture, out var parsed) ? parsed.Year : null;
-
-    /// <summary>TMDB на русском пишет жанры со строчной буквы: «мелодрама».</summary>
-    private static string Capitalize(string name) =>
-        name.Length == 0 ? name : char.ToUpper(name[0], RussianCulture) + name[1..];
-
-    public async Task<MovieTitle?> GetAsync(string imdbId, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(Settings.Token)) return null;
-
-        var key = "tmdb:" + imdbId;
-        if (memory.TryGetValue(key, out MovieTitle? cached) && cached is not null) return cached;
-
-        var found = await GetAsync<FindResponse>($"/3/find/{Uri.EscapeDataString(imdbId)}?external_source=imdb_id", ct);
-        var match = found?.MovieResults?.FirstOrDefault();
-        if (match is null) return null;
-
-        var details = await GetAsync<Details>($"/3/movie/{match.Id}", ct);
-        if (details is null) return null;
-
-        var title = ToTitle(imdbId, details);
-        memory.Set(key, title, CacheTtl);
-        return title;
     }
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken ct) where T : class
@@ -250,40 +312,61 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
         request.RequestUri = new Uri($"{request.RequestUri}&api_key={Uri.EscapeDataString(token)}");
     }
 
-    private MovieTitle ToTitle(string imdbId, Details details) => new()
-    {
-        ImdbId = imdbId,
-        Name = details.Title ?? details.OriginalTitle ?? imdbId,
-        OriginalName = details.OriginalTitle,
-        Year = DateOnly.TryParse(details.ReleaseDate, CultureInfo.InvariantCulture, out var date) ? date.Year : null,
-        RuntimeMinutes = details.Runtime is > 0 ? details.Runtime : null,
-        Description = string.IsNullOrWhiteSpace(details.Overview) ? null : details.Overview,
-        PosterUrl = string.IsNullOrEmpty(details.PosterPath) ? null : Settings.ImagesUrl.TrimEnd('/') + details.PosterPath,
-        Genres = details.Genres?.Select(g => g.Name).OfType<string>().ToList() ?? [],
-        Ratings = TmdbRating(details.VoteAverage, details.VoteCount)
-    };
-
     private static IReadOnlyList<Rating> TmdbRating(double? average, int? votes) =>
         votes >= MinVotesToShow && Rating.Create(Rating.Tmdb, average) is { } rating ? [rating] : [];
+
+    private static int? ParseYear(string? date) =>
+        DateOnly.TryParse(date, CultureInfo.InvariantCulture, out var parsed) ? parsed.Year : null;
+
+    private static string? Blank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text;
+
+    /// <summary>TMDB на русском пишет жанры со строчной буквы: «мелодрама».</summary>
+    private static string Capitalize(string name) =>
+        name.Length == 0 ? name : char.ToUpper(name[0], RussianCulture) + name[1..];
+
+    /// <summary>Чем фильмы отличаются от сериалов в адресах TMDB.</summary>
+    private sealed record TmdbMedia(string Segment, string DateField, string YearParam, string GenitivePlural);
 
     private sealed record FindResponse
     {
         public List<FindMatch>? MovieResults { get; init; }
+        public List<FindMatch>? TvResults { get; init; }
     }
 
     private sealed record FindMatch(int Id);
 
-    private sealed record Details
+    /// <summary>Поля фильма (title, release_date) и сериала (name, first_air_date) в одной записи.</summary>
+    private abstract record TmdbItem
     {
         public string? Title { get; init; }
+        public string? Name { get; init; }
         public string? OriginalTitle { get; init; }
+        public string? OriginalName { get; init; }
+        public string? ReleaseDate { get; init; }
+        public string? FirstAirDate { get; init; }
         public string? Overview { get; init; }
         public string? PosterPath { get; init; }
-        public string? ReleaseDate { get; init; }
-        public int? Runtime { get; init; }
-        public List<GenreName>? Genres { get; init; }
         public double? VoteAverage { get; init; }
         public int? VoteCount { get; init; }
+
+        public string? DisplayName => Title ?? Name ?? OriginalTitle ?? OriginalName;
+        public string? OriginalDisplayName => OriginalTitle ?? OriginalName;
+        public string? Date => ReleaseDate ?? FirstAirDate;
+    }
+
+    private sealed record Details : TmdbItem
+    {
+        public int? Runtime { get; init; }
+        public int? NumberOfSeasons { get; init; }
+        public List<GenreName>? Genres { get; init; }
+    }
+
+    /// <summary>Запись /discover и /search: метаданные без IMDb ID.</summary>
+    private sealed record ListedItem : TmdbItem
+    {
+        public int Id { get; init; }
+        public List<int>? GenreIds { get; init; }
+        public double? Popularity { get; init; }
     }
 
     private sealed record GenreName(string? Name);
@@ -292,22 +375,7 @@ public sealed class TmdbCatalog(HttpClient http, SourcesConfigStore config, IMem
 
     private sealed record GenreItem(int Id, string? Name);
 
-    private sealed record MovieList(List<ListedMovie>? Results, int TotalPages);
-
-    /// <summary>Запись /discover и /search: метаданные без IMDb ID.</summary>
-    private sealed record ListedMovie
-    {
-        public int Id { get; init; }
-        public string? Title { get; init; }
-        public string? OriginalTitle { get; init; }
-        public string? ReleaseDate { get; init; }
-        public string? PosterPath { get; init; }
-        public string? Overview { get; init; }
-        public List<int>? GenreIds { get; init; }
-        public double? Popularity { get; init; }
-        public double? VoteAverage { get; init; }
-        public int? VoteCount { get; init; }
-    }
+    private sealed record ItemList(List<ListedItem>? Results, int TotalPages);
 
     private sealed record ExternalIds(string? ImdbId);
 }

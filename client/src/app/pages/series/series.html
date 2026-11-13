@@ -1,0 +1,144 @@
+@let state = page();
+@switch (state.status) {
+  @case ('loading') {
+    <main class="page"><p class="state-message">Загружаем сериал…</p></main>
+  }
+  @case ('error') {
+    <main class="page">
+      <p class="state-message">
+        @if (state.httpStatus === 404) {
+          Такого сериала нет ни в источниках, ни в каталоге.
+        } @else {
+          Не удалось загрузить сериал. Повторите попытку позже.
+        }
+      </p>
+    </main>
+  }
+  @case ('ready') {
+    @let series = state.data.details.series;
+    @let current = selection();
+    <div class="back-row">
+      <a class="back" routerLink="/series">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        <span>Все сериалы</span>
+      </a>
+    </div>
+
+    <main class="layout">
+      <section class="stage" aria-label="Видео">
+        <div class="frame">
+          @if (!current) {
+            <div class="frame-message">
+              <div class="frame-title">Сериала нет в источниках</div>
+              <div class="muted">Источники сериалов настраиваются в секции <span class="mono">series</span> на странице <a routerLink="/sources">Источники</a>.</div>
+            </div>
+          } @else if (failed()) {
+            <div class="frame-message">
+              <div class="frame-title">Серия не загрузилась</div>
+              <div class="frame-actions">
+                <button type="button" class="btn" (click)="retry()">Повторить</button>
+              </div>
+            </div>
+          } @else if (unsupported()) {
+            <div class="frame-message">
+              <div class="frame-title">Источник вернул ссылку, которую нельзя встроить</div>
+              <div class="muted">Разрешены только плееры по https.</div>
+            </div>
+          } @else if (iframeUrl(); as url) {
+            <iframe
+              [src]="url"
+              (load)="onFrameLoaded()"
+              title="Плеер источника"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowfullscreen
+              referrerpolicy="strict-origin-when-cross-origin"
+              sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+            ></iframe>
+          } @else {
+            <div class="frame-message"><div class="muted">Загружаем серию…</div></div>
+          }
+        </div>
+
+        <div class="stage-info">
+          <div class="stage-title">
+            <h1>{{ series.name }}</h1>
+            @if (current) {
+              <div class="small muted">Сезон {{ current.season }} · Серия {{ current.episode }} · {{ current.stream.label }}</div>
+            }
+          </div>
+          @if (current) {
+            <div class="stage-actions">
+              <button type="button" class="btn" [disabled]="!canGoPrev()" (click)="go(-1)">Предыдущая</button>
+              <button type="button" class="btn btn-light" [disabled]="!canGoNext()" (click)="go(1)">Следующая</button>
+            </div>
+          }
+        </div>
+
+        @if (resumedFrom(); as where) {
+          <p class="notice" role="status">Продолжаем с того места, где вы остановились: {{ where }}.</p>
+        }
+
+        @if (series.description) {
+          <p class="description">{{ series.description }}</p>
+        }
+      </section>
+
+      <aside class="rail" aria-label="О сериале и выбор серии">
+        <div class="about">
+          <app-poster class="about-poster" [url]="series.posterUrl" [text]="series.originalName ?? series.name" [seed]="seed(series.imdbId)" />
+          <div class="about-text">
+            <app-ratings [ratings]="series.ratings" />
+            @if (meta(series); as line) {
+              <div class="small muted">{{ line }}</div>
+            }
+            <a class="mono small" [href]="imdbUrl(series.imdbId)" target="_blank" rel="noopener noreferrer">{{ series.imdbId }}</a>
+          </div>
+        </div>
+
+        @if (current) {
+          <div class="group" role="group" aria-labelledby="dub-h">
+            <h2 id="dub-h" class="label">Озвучка</h2>
+            <div class="dub-list">
+              @for (stream of state.data.details.streams; track stream.sourceId + stream.streamId) {
+                <button type="button" class="dub" [attr.aria-pressed]="isCurrentStream(stream)" (click)="pickStream(stream)">
+                  <span class="dub-text">
+                    <span class="dub-name">{{ stream.label }}</span>
+                    <span class="dub-sub">{{ stream.sourceId }}</span>
+                  </span>
+                  <span class="dub-sub">{{ episodesLabel(stream) }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          @if (seasons().length > 1) {
+            <div class="group" role="group" aria-labelledby="season-h">
+              <h2 id="season-h" class="label">Сезон</h2>
+              <div class="chips">
+                @for (season of seasons(); track season) {
+                  <button type="button" class="chip" [attr.aria-pressed]="season === current.season" (click)="pickSeason(season)">{{ season }}</button>
+                }
+              </div>
+            </div>
+          }
+
+          <div class="group" role="group" aria-labelledby="eps-h">
+            <h2 id="eps-h" class="label">Серии{{ seasons().length > 1 ? '' : ' · сезон ' + current.season }}</h2>
+            <div class="episodes">
+              @for (episode of seasonEpisodes(); track episode) {
+                <button
+                  type="button"
+                  class="episode"
+                  [class.current]="episode === current.episode"
+                  [attr.aria-label]="'Серия ' + episode + (episode === current.episode ? ', сейчас' : '')"
+                  [attr.aria-current]="episode === current.episode ? 'true' : null"
+                  (click)="pickEpisode(episode)"
+                >{{ episode }}</button>
+              }
+            </div>
+          </div>
+        }
+      </aside>
+    </main>
+  }
+}

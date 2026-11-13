@@ -24,6 +24,8 @@ internal static class BrowseEndpoints
         api.MapGet("/browse", BrowseAnime);
         api.MapGet("/movies/genres", GetMovieGenres);
         api.MapGet("/movies/browse", BrowseMovies);
+        api.MapGet("/series/genres", GetSeriesGenres);
+        api.MapGet("/series/browse", BrowseSeries);
     }
 
     private static Task<IResult> GetAnimeGenres(IAnimeBrowser catalog, ILoggerFactory loggers, CancellationToken ct) =>
@@ -31,6 +33,26 @@ internal static class BrowseEndpoints
 
     private static Task<IResult> GetMovieGenres(IMovieBrowser catalog, ILoggerFactory loggers, CancellationToken ct) =>
         CallCatalogAsync(async () => Results.Ok(await catalog.GetGenresAsync(ct)), loggers, ct);
+
+    private static Task<IResult> GetSeriesGenres(ISeriesBrowser catalog, ILoggerFactory loggers, CancellationToken ct) =>
+        CallCatalogAsync(async () => Results.Ok(await catalog.GetSeriesGenresAsync(ct)), loggers, ct);
+
+    private static Task<IResult> BrowseSeries(
+        [AsParameters] BrowseRequest request,
+        ISeriesBrowser catalog,
+        TimeProvider time,
+        ILoggerFactory loggers,
+        CancellationToken ct)
+    {
+        var query = request.ToQuery(time.GetUtcNow().Year, out var error);
+        if (query is null) return Task.FromResult(BadRequest(error!));
+
+        return CallCatalogAsync(async () =>
+        {
+            var page = await catalog.BrowseSeriesAsync(query, ct);
+            return Results.Ok(new BrowseResult<MovieCard>(page.Items.Select(ToCard).ToList(), page.Page, page.HasMore));
+        }, loggers, ct);
+    }
 
     private static Task<IResult> BrowseAnime(
         [AsParameters] BrowseRequest request,
@@ -98,6 +120,9 @@ internal static class BrowseEndpoints
         PosterUrl = title.PosterUrl,
         Score = title.Score
     };
+
+    private static MovieCard ToCard(SeriesTitle title) =>
+        new(title.ImdbId, title.Name, title.OriginalName, title.Year, title.PosterUrl, [], title.Ratings);
 
     private static MovieCard ToCard(MovieTitle title) =>
         new(title.ImdbId, title.Name, title.OriginalName, title.Year, title.PosterUrl, [], title.Ratings);

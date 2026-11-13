@@ -34,7 +34,24 @@ export class App {
     return tree.queryParams['q'] ?? '';
   });
 
-  protected readonly inMovies = computed(() => /^\/movies(\/|\?|$)/.test(this.url()));
+  /** Раздел, в котором ищет строка в шапке: фильмы, сериалы или аниме-каталог. */
+  private readonly section = computed<'/movies' | '/series' | '/search'>(() => {
+    const url = this.url();
+    if (/^\/movies(\/|\?|$)/.test(url)) return '/movies';
+    if (/^\/series(\/|\?|$)/.test(url)) return '/series';
+    return '/search';
+  });
+
+  protected readonly placeholder = computed(() => {
+    switch (this.section()) {
+      case '/movies':
+        return 'Найти фильм или tt-номер';
+      case '/series':
+        return 'Найти сериал или tt-номер';
+      default:
+        return 'Найти аниме';
+    }
+  });
 
   /**
    * На своей странице текст добавляется к выбранным жанру, годам и сортировке, а страница сбрасывается.
@@ -45,7 +62,7 @@ export class App {
     const q = query.trim();
     if (q.length === 1) return;
 
-    const target = this.inMovies() ? '/movies' : '/search';
+    const target = this.section();
     const samePage = this.url().split('?')[0] === target;
     if (!q && !samePage && target === '/search') return;
 
