@@ -7,11 +7,12 @@ import { Loadable, animeRatings, kindLabel, loadable, plural } from '../../core/
 import { DubGroup, DubKind, TitleDetails } from '../../core/models';
 import { formatTime, shouldResume } from '../../core/player-bridge';
 import { Poster } from '../../shared/poster';
+import { LibraryButtons } from '../../shared/library-buttons';
 import { Ratings } from '../../shared/ratings';
 
 @Component({
   selector: 'app-title-page',
-  imports: [RouterLink, Poster, Ratings],
+  imports: [RouterLink, Poster, Ratings, LibraryButtons],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './title.html',
   styleUrl: './title.scss',

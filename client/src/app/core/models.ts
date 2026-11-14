@@ -196,3 +196,28 @@ export interface SeriesProgressItem {
   positionSeconds: number;
   durationSeconds: number | null;
 }
+
+export type LibraryKind = 'anime' | 'movie' | 'series';
+export type LibraryStatus = 'planned' | 'watched';
+export type LibraryList = 'planned' | 'watched' | 'favorite';
+
+/** Отметка тайтла: статус («Буду смотреть» или «Просмотрено») и отдельно «Любимое». */
+export interface LibraryState {
+  status: LibraryStatus | null;
+  favorite: boolean;
+}
+
+export interface LibraryItem extends LibraryState {
+  kind: LibraryKind;
+  itemId: string;
+  name: string;
+  posterUrl: string | null;
+  year: number | null;
+}
+
+export interface LibraryPage {
+  items: LibraryItem[];
+  page: number;
+  hasMore: boolean;
+  counts: Record<LibraryList, number>;
+}

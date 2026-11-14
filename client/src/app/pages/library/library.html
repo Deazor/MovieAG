@@ -1,0 +1,58 @@
+<main class="library-page">
+  <h1 class="page-title">Библиотека</h1>
+
+  @let state = result();
+  <nav class="tabs" aria-label="Списки библиотеки">
+    @for (tab of lists; track tab.id) {
+      <a
+        class="tab"
+        [routerLink]="[]"
+        [queryParams]="params({ list: tab.id })"
+        [attr.aria-current]="tab.id === currentList() ? 'page' : null"
+      >
+        {{ tab.label }}
+        @if (state.status === 'ready') {
+          <span class="count">{{ state.data.counts[tab.id] }}</span>
+        }
+      </a>
+    }
+  </nav>
+
+  <div class="kinds" role="group" aria-label="Раздел">
+    @for (option of kinds; track option.label) {
+      <a class="chip" [routerLink]="[]" [queryParams]="params({ kind: option.id })" [attr.aria-pressed]="option.id === currentKind()">
+        {{ option.label }}
+      </a>
+    }
+  </div>
+
+  @switch (state.status) {
+    @case ('loading') {
+      <p class="state-message">Загружаем библиотеку…</p>
+    }
+    @case ('error') {
+      <p class="state-message">Не удалось загрузить библиотеку. Проверьте, что сервер запущен, и повторите попытку.</p>
+    }
+    @case ('ready') {
+      @if (state.data.items.length === 0) {
+        <p class="state-message">{{ emptyText() }}</p>
+      } @else {
+        <div class="grid">
+          @for (item of state.data.items; track item.kind + item.itemId) {
+            <a class="card" [routerLink]="link(item)">
+              <app-poster [url]="item.posterUrl" [text]="item.name" [seed]="seed(item)" />
+              <div class="card-name">
+                @if (item.favorite) {
+                  <span class="heart" aria-label="Любимое">♥</span>
+                }
+                {{ item.name }}
+              </div>
+              <div class="muted small">{{ meta(item) }}</div>
+            </a>
+          }
+        </div>
+      }
+      <app-pager [page]="state.data.page" [hasMore]="state.data.hasMore" />
+    }
+  }
+</main>

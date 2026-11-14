@@ -7,6 +7,7 @@ import { ApiService } from '../../core/api.service';
 import { Loadable, imdbSeed, loadable, plural } from '../../core/format';
 import { Playback, SeriesDetails, SeriesEpisode, SeriesProgressItem, SeriesStream, SeriesTitle } from '../../core/models';
 import { Poster } from '../../shared/poster';
+import { LibraryButtons } from '../../shared/library-buttons';
 import { Ratings } from '../../shared/ratings';
 
 interface PageData {
@@ -26,7 +27,7 @@ interface Selection {
  */
 @Component({
   selector: 'app-series',
-  imports: [RouterLink, Poster, Ratings],
+  imports: [RouterLink, Poster, Ratings, LibraryButtons],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './series.html',
   styleUrls: ['../player/player.scss', '../movie/movie.scss'],

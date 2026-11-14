@@ -23,6 +23,7 @@
             <div class="muted">{{ meta() }}</div>
             <app-ratings [ratings]="ratings(title.score)" />
           </div>
+          <app-library-buttons kind="anime" [itemId]="title.id.toString()" [name]="title.name" [posterUrl]="title.posterUrl" [year]="title.year" />
           @if (title.description) {
             <p class="description">{{ title.description }}</p>
           }

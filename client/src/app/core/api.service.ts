@@ -4,6 +4,10 @@ import { Observable, map } from 'rxjs';
 import { BrowseFilters, BrowseResult, Genre } from './browse';
 import {
   HistoryItem,
+  LibraryKind,
+  LibraryList,
+  LibraryPage,
+  LibraryState,
   MovieCard,
   MovieDetails,
   MovieListResult,
@@ -150,6 +154,26 @@ export class ApiService {
   /** Сериалы из каталога TMDB; без токена TMDB сервер отвечает 503. */
   browseSeries(query: string, filters: BrowseFilters, page: number): Observable<BrowseResult<MovieCard>> {
     return this.http.get<BrowseResult<MovieCard>>('/api/series/browse', { params: browseParams(query, filters, page) });
+  }
+
+  library(list: LibraryList, kind: LibraryKind | null, page: number): Observable<LibraryPage> {
+    let params = new HttpParams().set('list', list);
+    if (kind) params = params.set('kind', kind);
+    if (page > 1) params = params.set('page', page);
+    return this.http.get<LibraryPage>('/api/library', { params });
+  }
+
+  libraryState(kind: LibraryKind, itemId: string): Observable<LibraryState> {
+    return this.http.get<LibraryState>(`/api/library/${kind}/${encodeURIComponent(itemId)}`);
+  }
+
+  /** Название, постер и год нужны странице «Библиотека», чтобы не ходить за ними в каталоги. */
+  saveLibrary(
+    kind: LibraryKind,
+    itemId: string,
+    body: LibraryState & { name: string; posterUrl: string | null; year: number | null },
+  ): Observable<LibraryState> {
+    return this.http.put<LibraryState>(`/api/library/${kind}/${encodeURIComponent(itemId)}`, body);
   }
 
   sources(): Observable<SourceStatus[]> {

@@ -112,6 +112,8 @@
           </div>
         </div>
 
+        <app-library-buttons kind="movie" [itemId]="movie.imdbId" [name]="movie.name" [posterUrl]="movie.posterUrl" [year]="movie.year" />
+
         @if (state.data.details.streams.length > 0) {
           <div class="group" role="group" aria-labelledby="stream-h">
             <h2 id="stream-h" class="label">Вариант просмотра</h2>

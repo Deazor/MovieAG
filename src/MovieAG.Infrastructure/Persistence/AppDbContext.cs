@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<WatchProgress> WatchProgress => Set<WatchProgress>();
     public DbSet<MovieProgress> MovieProgress => Set<MovieProgress>();
     public DbSet<SeriesProgress> SeriesProgress => Set<SeriesProgress>();
+    public DbSet<LibraryItem> Library => Set<LibraryItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,19 @@ public class AppDbContext : DbContext
             entity.Property(p => p.StreamLabel).HasMaxLength(200);
             entity.HasIndex(p => p.UpdatedAt);
         });
+
+        modelBuilder.Entity<LibraryItem>(entity =>
+        {
+            entity.ToTable("library");
+            entity.HasKey(i => new { i.Kind, i.ItemId });
+            entity.Property(i => i.Kind).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.ItemId).HasMaxLength(16);
+            entity.Property(i => i.Name).HasMaxLength(LibraryRules.MaxNameLength);
+            entity.Property(i => i.PosterUrl).HasMaxLength(LibraryRules.MaxPosterUrlLength);
+            entity.Property(i => i.Status).HasConversion<string>().HasMaxLength(16);
+            entity.HasIndex(i => new { i.Status, i.UpdatedAt });
+            entity.HasIndex(i => new { i.Favorite, i.UpdatedAt });
+        });
     }
 }
 
@@ -88,6 +102,22 @@ public sealed class MovieProgress
     public string StreamId { get; set; } = "";
     public int PositionSeconds { get; set; }
     public int? DurationSeconds { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Запись библиотеки: аниме, фильм или сериал со статусом и отметкой «Любимое».
+/// Название и постер хранятся здесь, чтобы список открывался без запросов к каталогам.
+/// </summary>
+public sealed class LibraryItem
+{
+    public LibraryKind Kind { get; set; }
+    public string ItemId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? PosterUrl { get; set; }
+    public int? Year { get; set; }
+    public LibraryStatus? Status { get; set; }
+    public bool Favorite { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
 

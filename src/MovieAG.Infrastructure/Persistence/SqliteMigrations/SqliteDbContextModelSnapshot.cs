@@ -68,6 +68,47 @@ namespace MovieAG.Infrastructure.Persistence.SqliteMigrations
                     b.ToTable("cached_titles", (string)null);
                 });
 
+            modelBuilder.Entity("MovieAG.Infrastructure.Persistence.LibraryItem", b =>
+                {
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ItemId")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Favorite")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PosterUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Kind", "ItemId");
+
+                    b.HasIndex("Favorite", "UpdatedAt");
+
+                    b.HasIndex("Status", "UpdatedAt");
+
+                    b.ToTable("library", (string)null);
+                });
+
             modelBuilder.Entity("MovieAG.Infrastructure.Persistence.MovieProgress", b =>
                 {
                     b.Property<string>("ImdbId")

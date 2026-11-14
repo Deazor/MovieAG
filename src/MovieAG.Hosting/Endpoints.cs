@@ -64,6 +64,7 @@ public static class Endpoints
         api.MapMovies();
         api.MapBrowse();
         api.MapSeries();
+        api.MapLibrary();
     }
 
     private static async Task<IResult> Search(string? q, AggregationService service, CancellationToken ct)

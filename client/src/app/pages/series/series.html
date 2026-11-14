@@ -95,6 +95,8 @@
           </div>
         </div>
 
+        <app-library-buttons kind="series" [itemId]="series.imdbId" [name]="series.name" [posterUrl]="series.posterUrl" [year]="series.year" />
+
         @if (current) {
           <div class="group" role="group" aria-labelledby="dub-h">
             <h2 id="dub-h" class="label">Озвучка</h2>
